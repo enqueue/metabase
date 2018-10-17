@@ -21,13 +21,13 @@
    :type/UUID       "UUID"})
 
 (defn- database->connection-details [context {:keys [database-name]}]
-  (merge {:host "localhost"
-          :port 8123
-          :timezone     :America/Los_Angeles}
+  (merge {:host     "localhost"
+          :port     8123
+          :timezone :America/Los_Angeles}
          (when (env :circleci)
            {:user "ubuntu"})
          (when (= context :db)
-           {:db database-name})))
+           {:dbname database-name})))
 
 (defn- quote-name [_ nm]
   (str \` nm \`))
