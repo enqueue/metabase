@@ -117,34 +117,18 @@
 
 (u/strict-extend ClickHouseDriver
   driver/IDriver
-  (merge (sql/IDriverSQLDefaultsMixin)
-         {:details-fields (constantly [{:name "host"
-                                        :display-name "Host"
-                                        :default      "localhost"}
-                                       {:name         "port"
-                                        :display-name "Port"
-                                        :type         :integer
-                                        :default      8123}
-                                       {:name         "dbname"
-                                        :display-name "Database name"
-                                        :placeholder  "database_name"
-                                        :required     true}
-                                       {:name         "user"
-                                        :display-name "Database username"
-                                        :placeholder  "What username do you use to login to the database?"
-                                        :default      "default"
-                                        :required     false}
-                                       {:name         "password"
-                                        :display-name "Database password"
-                                        :type         :password
-                                        :placeholder  "*******"}
-                                       {:name         "additional-options"
-                                        :display-name "Additional JDBC connection string options"
-                                        :placeholder  "connection_timeout=50"}])
-          :features (constantly #{:basic-aggregations
-                                  :standard-deviation-aggregations
-                                  :expressions
-                                  :expression-aggregations})})
+  (merge
+    (sql/IDriverSQLDefaultsMixin)
+    {:details-fields (constantly [driver/default-host-details
+                                  (assoc driver/default-port-details :default 8123)
+                                  (assoc driver/default-dbname-details :required false)
+                                  (assoc driver/default-user-details :required false)
+                                  driver/default-password-details
+                                  driver/default-additional-options-details])
+     :features (constantly #{:basic-aggregations
+                             :standard-deviation-aggregations
+                             :expressions
+                             :expression-aggregations})})
   sql/ISQLDriver
   (merge (sql/ISQLDriverDefaultsMixin)
          {:active-tables             sql/post-filtered-active-tables
