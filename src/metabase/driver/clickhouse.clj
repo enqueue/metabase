@@ -29,24 +29,13 @@
    :UInt64      :type/BigInteger
    :UUID        :type/UUID})
 
-(defn clickhouse
-  "Create a database specification for a clichouse database. Opts should include
-   keys for :db, :user and :password.
-   You can also optionally set host and port."
-  [{:keys [host port db]
-    :or {host "localhost", port 8123, db "default"}
-    :as opts}]
-  (merge {:classname "ru.yandex.clickhouse.ClickHouseDriver" ; must be in classpath
-          :subprotocol "clickhouse"
-          ; :subname (str "//" host ":" port "/" db)}
-          :subname (str "//" host ":" port)}
-         (dissoc opts :host :port :db)))
-
 (defn- connection-details->spec [details]
-  (-> details
-      (set/rename-keys {:dbname :db})
-      clickhouse
-      (sql/handle-additional-options details)))
+  (let [{:keys [host port dbname]} details]
+    (-> (dissoc details :host :port :dbname)
+        (merge {:classname   "ru.yandex.clickhouse.ClickHouseDriver"
+                :subprotocol "clickhouse"
+                :subname     (str "//" host ":" port "/" dbname)})
+        (sql/handle-additional-options))))
 
 (defn- minus [a b]
   (hsql/call :minus a b))
