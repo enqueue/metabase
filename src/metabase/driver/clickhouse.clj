@@ -6,6 +6,11 @@
             [metabase.util :as u]
             [metabase.util.honeysql-extensions :as hx]))
 
+(defrecord ClickHouseDriver []
+  :load-ns true
+  clojure.lang.Named
+  (getName [_] "ClickHouse"))
+
 (def ^:private ^:const column->base-type
   "Map of ClickHouse column types -> Field base types.
    Add more mappings here as you come across them."
@@ -109,13 +114,6 @@
   (case seconds-or-milliseconds
     :seconds      (hsql/call :toDateTime expr)
     :milliseconds (recur (hx// expr 1000) :seconds)))
-
-
-(defrecord ClickHouseDriver []
-  :load-ns true
-  clojure.lang.Named
-  (getName [_] "ClickHouse"))
-
 
 (u/strict-extend ClickHouseDriver
   driver/IDriver
