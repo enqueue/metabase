@@ -1,12 +1,15 @@
 (ns metabase.test.data.clickhouse
   "Code for creating / destroying a ClickHouse database from a `DatabaseDefinition`."
-  (:require [environ.core :refer [env]]
+  (:require [clojure.java.jdbc :as jdbc]
+            [environ.core :refer [env]]
             metabase.driver.clickhouse
             [metabase.test.data
                          [generic-sql :as generic]
                          [interface :as i]]
-            [metabase.util :as u])
-  (:import metabase.driver.clickhouse.ClickHouseDriver))
+            [metabase.util :as u]
+            [metabase.util.honeysql-extensions :as hx]
+            [metabase.driver.generic-sql.query-processor :as sqlqp])
+  (:import metabase.driver.clickhouse.ClickHouseDriver java.sql.SQLException))
 
 (def ^:private ^:const field-base-type->sql-type
   {:type/BigInteger "Int64"
@@ -52,13 +55,35 @@
   ([_ db-name table-name]            [table-name])
   ([_ db-name table-name field-name] [field-name]))
 
+(defn- do-insert!
+  "Insert ROW-OR-ROWS into TABLE-NAME for the DRIVER database defined by SPEC."
+  [driver spec table-name row-or-rows]
+  (let [rows    (if (sequential? row-or-rows) row-or-rows [row-or-rows])
+        columns (keys (first rows))
+        values  (for [row rows]
+                  (for [value (map row columns)]
+                    (sqlqp/->honeysql driver value)))]
+    (try (jdbc/insert-multi! spec table-name columns values)
+          (catch SQLException e
+            (println (u/format-color 'red "INSERT FAILED"))
+            (jdbc/print-sql-exception-chain e)))))
+
+(defn- load-data-clickhouse!
+  [driver {:keys [database-name], :as dbdef} {:keys [table-name], :as tabledef}]
+  (jdbc/with-db-connection [conn (generic/database->spec driver :db dbdef)]
+    (.setAutoCommit (jdbc/get-connection conn) false)
+    (let [table-name (apply hx/qualify-and-escape-dots (generic/qualified-name-components driver database-name table-name))
+          insert!    (partial do-insert! driver conn table-name)
+          rows       (generic/load-data-get-rows driver dbdef tabledef)]
+      (insert! rows))))
+
 (u/strict-extend ClickHouseDriver
   generic/IGenericSQLTestExtensions
   (merge generic/DefaultsMixin
          {:add-fk-sql                (constantly nil)
           :create-table-sql          create-table-sql
           :field-base-type->sql-type (u/drop-first-arg field-base-type->sql-type)
-          :load-data!                generic/load-data-one-at-a-time!
+          :load-data!                load-data-clickhouse!
           :execute-sql!              generic/sequentially-execute-sql!
           :quote-name                quote-name
           :pk-field-name             (constantly nil)
