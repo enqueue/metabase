@@ -1,0 +1,23 @@
+* Nested queries versus alias:
+
+SELECT 
+    (floor((latitude - 10.) / 2) * 2) + 10. AS latitude, 
+    count(*) AS count
+FROM 
+(
+    SELECT *
+    FROM 
+    (
+        SELECT 
+            `test-data`.venues.id AS ids, 
+            `test-data`.venues.name AS name, 
+            `test-data`.venues.category_id AS category_id, 
+            `test-data`.venues.latitude AS latitude, 
+            `test-data`.venues.longitude AS longitude, 
+            `test-data`.venues.price AS price
+        FROM `test-data`.venues 
+    ) AS source 
+) AS source 
+GROUP BY latitude
+ORDER BY latitude ASC
+
