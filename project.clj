@@ -104,7 +104,7 @@
                  [org.eclipse.jetty/jetty-server "9.4.11.v20180605"]  ; We require JDK 8 which allows us to run Jetty 9.4, ring-jetty-adapter runs on 1.7 which forces an older version
                  [ring/ring-json "0.4.0"]                             ; Ring middleware for reading/writing JSON automatically
                  [stencil "0.5.0"]                                    ; Mustache templates for Clojure
-                 [ru.yandex.clickhouse/clickhouse-jdbc "0.1.46"]      ; ClickHouse JDBC driver
+                 [ru.yandex.clickhouse/clickhouse-jdbc "0.1.48"]      ; ClickHouse JDBC driver
                  [toucan "1.1.9"                                      ; Model layer, hydration, and DB utilities
                   :exclusions [honeysql]]]
   :repositories [["redshift" "https://s3.amazonaws.com/redshift-driver-downloads"]]
