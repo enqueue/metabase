@@ -243,6 +243,8 @@ jobs:
         <<: *restore-be-deps-cache
     - run:
         name: Run backend unit tests (Clickhouse)
+        environment:
+            DRIVERS: h2,clickhouse
         command: >
           /home/circleci/metabase/metabase/.circleci/skip-driver-tests.sh clickhouse ||
           lein with-profile +ci test

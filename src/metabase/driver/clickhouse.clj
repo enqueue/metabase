@@ -66,9 +66,6 @@
 (defn- to-relative-day-num [expr]
   (hsql/call :toRelativeDayNum (hsql/call :toDateTime expr)))
 
-(defn- to-relative-week-num [expr]
-  (hsql/call :toRelativeWeekNum (hsql/call :toDateTime expr)))
-
 (defn- to-relative-month-num [expr]
   (hsql/call :toRelativeMonthNum (hsql/call :toDateTime expr)))
 
