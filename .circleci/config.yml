@@ -178,36 +178,36 @@ jobs:
             lein with-profile +ci test
           no_output_timeout: 5m
 
-  be-tests-sparksql:
-    working_directory: /home/circleci/metabase/metabase/
-    docker:
-      - image: circleci/clojure:lein-2.8.1-node-browsers
-      - image: metabase/spark:2.1.1
-    steps:
-      - attach_workspace:
-          at: /home/circleci/
-      - restore_cache:
-          <<: *restore-be-deps-cache
-      - run:
-          name: Make plugins dir
-          command: mkdir /home/circleci/metabase/metabase/plugins
-      - run:
-          name: Download SparkSQL deps JAR
-          command: wget --output-document=plugins/spark-deps.jar https://s3.amazonaws.com/sparksql-deps/metabase-sparksql-deps-1.2.1.spark2-standalone.jar
-      - run:
-          name: Wait for SparkSQL to be ready
-          command: >
-            /home/circleci/metabase/metabase/.circleci/skip-driver-tests.sh sparksql ||
-            while ! nc -z localhost 10000; do sleep 0.1; done
-          no_output_timeout: 5m
-      - run:
-          name: Run backend unit tests (SparkSQL)
-          environment:
-            DRIVERS: h2,sparksql
-          command: >
-            /home/circleci/metabase/metabase/.circleci/skip-driver-tests.sh sparksql ||
-            lein with-profile +ci test
-          no_output_timeout: 5m
+  # be-tests-sparksql:
+  #   working_directory: /home/circleci/metabase/metabase/
+  #   docker:
+  #     - image: circleci/clojure:lein-2.8.1-node-browsers
+  #     - image: metabase/spark:2.1.1
+  #   steps:
+  #     - attach_workspace:
+  #         at: /home/circleci/
+  #     - restore_cache:
+  #         <<: *restore-be-deps-cache
+  #     - run:
+  #         name: Make plugins dir
+  #         command: mkdir /home/circleci/metabase/metabase/plugins
+  #     - run:
+  #         name: Download SparkSQL deps JAR
+  #         command: wget --output-document=plugins/spark-deps.jar https://s3.amazonaws.com/sparksql-deps/metabase-sparksql-deps-1.2.1.spark2-standalone.jar
+  #     - run:
+  #         name: Wait for SparkSQL to be ready
+  #         command: >
+  #           /home/circleci/metabase/metabase/.circleci/skip-driver-tests.sh sparksql ||
+  #           while ! nc -z localhost 10000; do sleep 0.1; done
+  #         no_output_timeout: 5m
+  #     - run:
+  #         name: Run backend unit tests (SparkSQL)
+  #         environment:
+  #           DRIVERS: h2,sparksql
+  #         command: >
+  #           /home/circleci/metabase/metabase/.circleci/skip-driver-tests.sh sparksql ||
+  #           lein with-profile +ci test
+  #         no_output_timeout: 5m
 
   be-tests-mongo:
     working_directory: /home/circleci/metabase/metabase/
@@ -372,34 +372,34 @@ jobs:
           no_output_timeout: 10m
 
 
-  be-tests-presto:
-    working_directory: /home/circleci/metabase/metabase/
-    docker:
-      - image: circleci/clojure:lein-2.8.1-node-browsers
-      - image: metabase/presto-mb-ci
-        environment:
-          JAVA_TOOL_OPTIONS: "-Xmx2g"
-    steps:
-      - attach_workspace:
-          at: /home/circleci/
-      - restore_cache:
-          <<: *restore-be-deps-cache
-      - run:
-          name: Wait for Presto to be ready
-          command: >
-            /home/circleci/metabase/metabase/.circleci/skip-driver-tests.sh sparksql ||
-            while ! nc -z localhost 8080; do sleep 0.1; done
-          no_output_timeout: 5m
-      - run:
-          name: Run backend unit tests (Presto)
-          environment:
-            DRIVERS: h2,presto
-            MB_PRESTO_TEST_HOST: localhost
-            MB_PRESTO_TEST_PORT: 8080
-          command: >
-            /home/circleci/metabase/metabase/.circleci/skip-driver-tests.sh presto ||
-            lein with-profile +ci test
-          no_output_timeout: 5m
+  # be-tests-presto:
+  #   working_directory: /home/circleci/metabase/metabase/
+  #   docker:
+  #     - image: circleci/clojure:lein-2.8.1-node-browsers
+  #     - image: metabase/presto-mb-ci
+  #       environment:
+  #         JAVA_TOOL_OPTIONS: "-Xmx2g"
+  #   steps:
+  #     - attach_workspace:
+  #         at: /home/circleci/
+  #     - restore_cache:
+  #         <<: *restore-be-deps-cache
+  #     - run:
+  #         name: Wait for Presto to be ready
+  #         command: >
+  #           /home/circleci/metabase/metabase/.circleci/skip-driver-tests.sh sparksql ||
+  #           while ! nc -z localhost 8080; do sleep 0.1; done
+  #         no_output_timeout: 5m
+  #     - run:
+  #         name: Run backend unit tests (Presto)
+  #         environment:
+  #           DRIVERS: h2,presto
+  #           MB_PRESTO_TEST_HOST: localhost
+  #           MB_PRESTO_TEST_PORT: 8080
+  #         command: >
+  #           /home/circleci/metabase/metabase/.circleci/skip-driver-tests.sh presto ||
+  #           lein with-profile +ci test
+  #         no_output_timeout: 5m
 
 
   be-tests-oracle:
@@ -602,8 +602,8 @@ workflows:
       - be-tests-postgres:
           requires:
             - be-tests
-      - be-tests-sparksql:
-          requires:
+      # - be-tests-sparksql:
+      #     requires:
       - be-tests-clickhouse:
           requires:
           - be-tests
@@ -619,9 +619,9 @@ workflows:
       - be-tests-sqlite:
           requires:
             - be-tests
-      - be-tests-presto:
-          requires:
-            - be-tests
+      # - be-tests-presto:
+      #     requires:
+      #       - be-tests
       - be-tests-oracle:
           requires:
             - be-tests
@@ -671,12 +671,12 @@ workflows:
             - be-tests
             - be-tests-mysql
             - be-tests-postgres
-            - be-tests-sparksql
+#            - be-tests-sparksql
             - be-tests-mongo
             - be-tests-sqlserver
             - be-tests-bigquery
             - be-tests-sqlite
-            - be-tests-presto
+#            - be-tests-presto
             - be-tests-oracle
             - be-tests-druid
             - be-tests-redshift
