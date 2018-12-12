@@ -690,4 +690,4 @@ workflows:
             - fe-tests-integrated
           filters:
             branches:
-              only: master
+              only: clickhouse-times
