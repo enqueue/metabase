@@ -692,4 +692,4 @@ workflows:
             - fe-tests-integrated
           filters:
             branches:
-              only: clickhouse-ci
+              only: clickhouse_ci
