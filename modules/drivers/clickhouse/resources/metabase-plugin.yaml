@@ -1,7 +1,7 @@
 info:
   name: Metabase ClickHouse Driver
   version: 1.0.0-SNAPSHOT-0.1.48
-  description: Allows Metabase to connect to ClickHouse databases.
+  description: Allows Metabase to connect to ClickHouse databases
 driver:
   name: clickhouse
   display-name: ClickHouse
