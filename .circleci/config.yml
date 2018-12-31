@@ -634,6 +634,7 @@ workflows:
             - be-tests
       - be-tests-sparksql:
           requires:
+            - be-tests
       - be-tests-clickhouse:
           requires:
           - be-tests
