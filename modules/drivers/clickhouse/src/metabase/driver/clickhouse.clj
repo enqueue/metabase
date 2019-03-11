@@ -61,16 +61,14 @@
   [_ {:keys [user password dbname host port ssl]
       :or   {user "default", password "", dbname "default", host "localhost", port "8123"}
       :as   details}]
-  (-> {:applicationName                config/mb-app-id-string
-       :classname                      "ru.yandex.clickhouse.ClickHouseDriver"
+  (-> {:classname                      "ru.yandex.clickhouse.ClickHouseDriver"
        :subprotocol                    "clickhouse"
-       :subname                        (str "//" host ":" port)
-       :database                       dbname
+       :subname                        (str "//" host ":" port "/" dbname)
        :password                       password
        :user                           user
        :ssl                            (boolean ssl)
        :use_server_time_zone_for_dates true}
-      (sql-jdbc.common/handle-additional-options details, :seperator-style :semicolon)))
+      (sql-jdbc.common/handle-additional-options details, :seperator-style :url)))
 
 (defn- modulo [a b]
   (hsql/call :modulo a b))

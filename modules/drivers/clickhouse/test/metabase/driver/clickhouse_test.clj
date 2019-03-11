@@ -1,6 +1,8 @@
 (ns metabase.driver.clickhouse-test
   "Tests for specific behavior of the ClickHouse driver."
-  (:require [metabase.util :as u]
+  (:require [expectations :refer :all]
+            [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
+            [metabase.util :as u]
             [metabase.query-processor-test :refer :all]
             [metabase.test.data :as data]
             [metabase.test.data
@@ -27,3 +29,17 @@
                           :order-by    [[:desc [:expression :divided]]]
                           :limit       1}))
       first-row last float))
+
+(expect
+  {:classname                      "ru.yandex.clickhouse.ClickHouseDriver"
+   :subprotocol                    "clickhouse"
+   :subname                        "//localhost:8123/foo?sessionTimeout=42"
+   :user                           "default"
+   :password                       ""
+   :ssl                            false
+   :use_server_time_zone_for_dates true}
+  (sql-jdbc.conn/connection-details->spec :clickhouse
+    {:host               "localhost"
+     :port               "8123"
+     :dbname             "foo"
+     :additional-options "sessionTimeout=42"}))
