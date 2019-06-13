@@ -661,7 +661,7 @@
   (let [response ((test-users/user->client :rasta) :get 200 (format "table/%d/query_metadata" (data/id :checkins)))]
     (dimension-options-for-field response "date")))
 
-(qpt/expect-with-non-timeseries-dbs-except #{:oracle :mongo :redshift :sparksql}
+(qpt/expect-with-non-timeseries-dbs-except #{:oracle :mongo :redshift :sparksql :clickhouse}
   []
   (data/dataset test-data-with-time
     (let [response ((test-users/user->client :rasta) :get 200 (format "table/%d/query_metadata" (data/id :users)))]
