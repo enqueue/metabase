@@ -73,11 +73,9 @@
   (str  (deferred-tru "The default language for this Metabase instance.")
         " "
         (deferred-tru "This only applies to emails, Pulses, etc. Users'' browsers will specify the language used in the user interface."))
-  :type    :string
-  :setter  (fn [new-value]
-             (setting/set-string! :site-locale new-value)
-             (set-locale new-value))
-  :default "en")
+  :type      :string
+  :on-change (fn [_ new-value] (when new-value (set-locale new-value)))
+  :default   "en")
 
 (defsetting admin-email
   (deferred-tru "The email address users should be referred to if they encounter a problem."))
@@ -172,6 +170,11 @@
   (deferred-tru "Allow users to explore data using X-rays")
   :type    :boolean
   :default true)
+
+(defsetting source-address-header
+  (deferred-tru "Identify the source of HTTP requests by this header's value, instead of its remote address.")
+  :getter (fn [] (some-> (setting/get-string :source-address-header)
+                         u/lower-case-en)))
 
 (defn remove-public-uuid-if-public-sharing-is-disabled
   "If public sharing is *disabled* and OBJECT has a `:public_uuid`, remove it so people don't try to use it (since it
