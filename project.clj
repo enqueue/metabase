@@ -7,14 +7,14 @@
   :min-lein-version "2.5.0"
 
   :aliases
-  {"generate-sample-dataset"           ["with-profile" "+generate-sample-dataset" "run"]
-   "profile"                           ["with-profile" "+profile" "run" "profile"]
+  {"profile"                           ["with-profile" "+profile" "run" "profile"]
    "h2"                                ["with-profile" "+h2-shell" "run" "-url" "jdbc:h2:./metabase.db"
                                         "-user" "" "-password" "" "-driver" "org.h2.Driver"]
    "generate-automagic-dashboards-pot" ["with-profile" "+generate-automagic-dashboards-pot" "run"]
    "install"                           ["with-profile" "+install" "install"]
    "install-for-building-drivers"      ["with-profile" "install-for-building-drivers" "install"]
    "run"                               ["with-profile" "+run" "run"]
+   "run-with-repl"                     ["with-profile" "+run-with-repl" "repl"]
    "ring"                              ["with-profile" "+ring" "ring"]
    "test"                              ["with-profile" "+test" "test"]
    "bikeshed"                          ["with-profile" "+bikeshed" "bikeshed"
@@ -49,6 +49,7 @@
    [org.clojure/math.numeric-tower "0.0.4"]                           ; math functions like `ceil`
    [org.clojure/tools.logging "0.4.1"]                                ; logging framework
    [org.clojure/tools.namespace "0.2.11"]
+   [org.clojure/tools.trace "0.7.10"]                                 ; function tracing
    [amalloy/ring-buffer "1.2.2"
     :exclusions [org.clojure/clojure
                  org.clojure/clojurescript]]                          ; fixed length queue implementation, used in log buffering
@@ -77,6 +78,7 @@
                  it.unimi.dsi/fastutil]]
    [com.draines/postal "2.0.3"]                                       ; SMTP library
    [com.jcraft/jsch "0.1.55"]                                         ; SSH client for tunnels
+   [com.google.guava/guava "28.2-jre"]                                ; dep for BigQuery, Spark, and GA. Require here rather than letting different dep versions stomp on each other — see comments on #9697
    [com.h2database/h2 "1.4.197"]                                      ; embedded SQL database
    [com.mattbertolini/liquibase-slf4j "2.0.0"]                        ; Java Migrations lib logging. We don't actually use this AFAIK (?)
    [com.taoensso/nippy "2.14.0"]                                      ; Fast serialization (i.e., GZIP) library for Clojure
@@ -141,10 +143,10 @@
   :manifest
   {"Liquibase-Package"
    #= (eval
-        (str "liquibase.change,liquibase.changelog,liquibase.database,liquibase.parser,liquibase.precondition,"
-             "liquibase.datatype,liquibase.serializer,liquibase.sqlgenerator,liquibase.executor,"
-             "liquibase.snapshot,liquibase.logging,liquibase.diff,liquibase.structure,"
-             "liquibase.structurecompare,liquibase.lockservice,liquibase.sdk,liquibase.ext"))}
+       (str "liquibase.change,liquibase.changelog,liquibase.database,liquibase.parser,liquibase.precondition,"
+            "liquibase.datatype,liquibase.serializer,liquibase.sqlgenerator,liquibase.executor,"
+            "liquibase.snapshot,liquibase.logging,liquibase.diff,liquibase.structure,"
+            "liquibase.structurecompare,liquibase.lockservice,liquibase.sdk,liquibase.ext"))}
 
   :jvm-opts
   ["-XX:+IgnoreUnrecognizedVMOptions"                                 ; ignore things not recognized for our Java version instead of refusing to start
@@ -155,6 +157,9 @@
 
   :javac-options
   ["-target" "1.8", "-source" "1.8"]
+
+  :java-source-paths
+  ["java"]
 
   :uberjar-name
   "metabase.jar"
@@ -206,6 +211,18 @@
 
    :run
    [:exclude-tests {}]
+
+   :run-with-repl
+   [:exclude-tests
+    :include-all-drivers
+
+    {:env
+     {:mb-jetty-join "false"}
+
+     :repl-options
+     {:init (do (require 'metabase.core)
+                (metabase.core/-main))
+      :timeout 60000}}]
 
    ;; start the dev HTTP server with 'lein ring server'
    :ring

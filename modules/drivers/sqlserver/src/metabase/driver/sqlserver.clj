@@ -5,7 +5,9 @@
             [metabase
              [config :as config]
              [driver :as driver]]
-            [metabase.driver.common :as driver.common]
+            [metabase.driver
+             [common :as driver.common]
+             [sql :as sql]]
             [metabase.driver.sql-jdbc
              [common :as sql-jdbc.common]
              [connection :as sql-jdbc.conn]
@@ -295,11 +297,15 @@
 ;; TIMEZONE FIXME — does it make sense to convert this to UTC? Shouldn't we convert it to the report timezone? Figure
 ;; this mystery out
 (defmethod sql-jdbc.execute/set-parameter [:sqlserver OffsetTime]
-  [driver prepared-statement index t]
-  (sql-jdbc.execute/set-parameter driver prepared-statement index
-                                  (t/local-time (t/with-offset-same-instant t (t/zone-offset 0)))))
+  [driver ps i t]
+  (sql-jdbc.execute/set-parameter driver ps i (t/local-time (t/with-offset-same-instant t (t/zone-offset 0)))))
 
 ;; instead of default `microsoft.sql.DateTimeOffset`
 (defmethod sql-jdbc.execute/read-column [:sqlserver microsoft.sql.Types/DATETIMEOFFSET]
   [_ _^ResultSet rs _ ^Integer i]
   (.getObject rs i OffsetDateTime))
+
+;; SQL Server doesn't really support boolean types so use bits instead (#11592)
+(defmethod sql/->prepared-substitution [:sqlserver Boolean]
+  [driver bool]
+  (sql/->prepared-substitution driver (if bool 1 0)))

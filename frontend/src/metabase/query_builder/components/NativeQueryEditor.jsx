@@ -70,6 +70,8 @@ type AutoCompleteResult = [string, string, string];
 type AceEditor = any; // TODO;
 
 type Props = {
+  readOnly?: boolean,
+
   location: LocationDescriptor,
 
   question: Question,
@@ -79,6 +81,7 @@ type Props = {
 
   runQuestionQuery: (options?: RunQueryParams) => void,
   setDatasetQuery: (datasetQuery: DatasetQuery) => void,
+  cancelQuery: () => void,
 
   setParameterValue: (parameterId: ParameterId, value: string) => void,
 
@@ -288,7 +291,9 @@ export default class NativeQueryEditor extends Component {
     this._editor.clearSelection();
 
     // hmmm, this could be dangerous
-    this._editor.focus();
+    if (!this.props.readOnly) {
+      this._editor.focus();
+    }
 
     const aceLanguageTools = ace.require("ace/ext/language_tools");
     this._editor.setOptions({
@@ -386,8 +391,10 @@ export default class NativeQueryEditor extends Component {
   render() {
     const {
       query,
+      cancelQuery,
       setParameterValue,
       location,
+      readOnly,
       isNativeEditorOpen,
       isRunnable,
       isRunning,
@@ -416,6 +423,7 @@ export default class NativeQueryEditor extends Component {
               selectedDatabaseId={database && database.id}
               setDatabaseFn={this.setDatabaseId}
               isInitiallyOpen={database == null}
+              readOnly={this.props.readOnly}
             />
           </div>,
         );
@@ -442,6 +450,7 @@ export default class NativeQueryEditor extends Component {
               tables={tables}
               setSourceTableFn={this.setTableId}
               isInitiallyOpen={false}
+              readOnly={this.props.readOnly}
             />
           </div>,
         );
@@ -484,7 +493,10 @@ export default class NativeQueryEditor extends Component {
           />
           <div className="flex-align-right flex align-center text-medium pr1">
             <a
-              className="Query-label no-decoration flex align-center mx3 text-brand-hover transition-all"
+              className={cx(
+                "Query-label no-decoration flex align-center mx3 text-brand-hover transition-all",
+                { hide: readOnly },
+              )}
               onClick={this.toggleEditor}
             >
               <span className="mr1" style={{ minWidth: 70 }}>
@@ -525,6 +537,7 @@ export default class NativeQueryEditor extends Component {
               isDirty={isResultDirty}
               isPreviewing={isPreviewing}
               onRun={this.runQuery}
+              onCancel={() => cancelQuery()}
               compact
               className="mx2 mb2 mt-auto p2"
               getTooltip={() =>

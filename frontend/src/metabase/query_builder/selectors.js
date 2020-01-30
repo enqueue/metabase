@@ -2,7 +2,7 @@
 
 import { createSelector } from "reselect";
 import _ from "underscore";
-import { getIn, updateIn } from "icepick";
+import { getIn, assocIn, updateIn } from "icepick";
 
 // Needed due to wrong dependency resolution order
 // eslint-disable-next-line no-unused-vars
@@ -49,6 +49,8 @@ export const getFirstQueryResult = state =>
 export const getSettings = state => state.settings.values;
 
 export const getIsNew = state => state.qb.card && !state.qb.card.id;
+
+export const getQueryStartTime = state => state.qb.queryStartTime;
 
 export const getDatabaseId = createSelector(
   [getCard],
@@ -162,7 +164,7 @@ function normalizeQuery(query, tableMetadata) {
     });
   }
   if (query.native && query.native["template-tags"] == null) {
-    query.native["template-tags"] = {};
+    query = assocIn(query, ["native", "template-tags"], {});
   }
   return query;
 }

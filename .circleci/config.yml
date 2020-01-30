@@ -81,9 +81,6 @@ executors:
     working_directory: /home/circleci/metabase/metabase/
     docker:
       - image: circleci/clojure:lein-2.8.1
-        environment:
-          MB_PRESTO_TEST_HOST: localhost
-          MB_PRESTO_TEST_PORT: 8080
       - image: metabase/presto-mb-ci
         environment:
           JAVA_TOOL_OPTIONS: "-Xmx2g"
@@ -410,7 +407,14 @@ jobs:
     steps:
       - run-yarn-command:
           command-name: Run Flow type checker
-          command: flow
+          command: lint-flow
+
+  fe-linter-docs-links:
+    executor: node
+    steps:
+      - run-yarn-command:
+          command-name: Run docs links checker
+          command: lint-docs-links
 
   fe-tests-karma:
     executor: node
@@ -455,6 +459,8 @@ jobs:
               then ./bin/build version frontend uberjar;
             fi
           no_output_timeout: 5m
+      - store_artifacts:
+          path: /home/circleci/metabase/metabase/target/uberjar/metabase.jar
       - save_cache:
           key: uberjar-{{ checksum "./backend-checksums.txt" }}-{{ checksum "./frontend-checksums.txt" }}
           paths:
@@ -695,6 +701,9 @@ workflows:
       - fe-linter-flow:
           requires:
             - fe-deps
+      - fe-linter-docs-links:
+          requires:
+            - fe-deps
       - fe-tests-karma:
           requires:
             - fe-deps
@@ -754,6 +763,7 @@ workflows:
             - fe-linter-eslint
             - fe-linter-flow
             - fe-linter-prettier
+            - fe-linter-docs-links
 
             - fe-tests-e2e
             - fe-tests-integration

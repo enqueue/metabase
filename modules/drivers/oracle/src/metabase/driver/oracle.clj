@@ -4,7 +4,9 @@
             [honeysql.core :as hsql]
             [java-time :as t]
             [metabase.driver :as driver]
-            [metabase.driver.common :as driver.common]
+            [metabase.driver
+             [common :as driver.common]
+             [sql :as sql]]
             [metabase.driver.sql
              [query-processor :as sql.qp]
              [util :as sql.u]]
@@ -292,12 +294,12 @@
   ;; try both and wrap the first in a try-catch. As far as I know there's now way to tell whether the value has a zone
   ;; offset or ID without first fetching a `TIMESTAMPTZ` object. So to avoid the try-catch we can fetch the
   ;; `TIMESTAMPTZ` and use `.offsetDateTimeValue` instead.
-  (let [^TIMESTAMPTZ t                  (.getObject rs i TIMESTAMPTZ)
-        ^C3P0ProxyConnection proxy-conn (.. rs getStatement getConnection)
-        conn                            (.unwrap proxy-conn OracleConnection)]
-    ;; TIMEZONE FIXME - we need to warn if the Oracle JDBC driver is `ojdbc7.jar`, which probably won't have this method
-    ;; I think we can call `(oracle.jdbc.OracleDriver/getJDBCVersion)` and check whether it returns 4.2+
-    (.offsetDateTimeValue t conn)))
+  (when-let [^TIMESTAMPTZ t (.getObject rs i TIMESTAMPTZ)]
+    (let [^C3P0ProxyConnection proxy-conn (.. rs getStatement getConnection)
+          conn                            (.unwrap proxy-conn OracleConnection)]
+      ;; TIMEZONE FIXME - we need to warn if the Oracle JDBC driver is `ojdbc7.jar`, which probably won't have this method
+      ;; I think we can call `(oracle.jdbc.OracleDriver/getJDBCVersion)` and check whether it returns 4.2+
+      (.offsetDateTimeValue t conn))))
 
 (defmethod unprepare/unprepare-value [:oracle OffsetDateTime]
   [_ t]
@@ -313,3 +315,8 @@
 (defmethod unprepare/unprepare-value [:oracle Instant]
   [driver t]
   (unprepare/unprepare-value driver (t/zoned-date-time t (t/zone-id "UTC"))))
+
+;; Oracle doesn't really support boolean types so use bits instead (See #11592, similar issue for SQL Server)
+(defmethod sql/->prepared-substitution [:oracle Boolean]
+  [driver bool]
+  (sql/->prepared-substitution driver (if bool 1 0)))
