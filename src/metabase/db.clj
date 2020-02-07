@@ -170,10 +170,10 @@
    (migrate! :up))
 
   ([direction]
-   (migrate! @db-connection-details direction))
+   (migrate! (jdbc-spec) direction))
 
-  ([db-details direction]
-   (jdbc/with-db-transaction [conn (jdbc-spec db-details)]
+  ([jdbc-spec direction]
+   (jdbc/with-db-transaction [conn jdbc-spec]
      ;; Tell transaction to automatically `.rollback` instead of `.commit` when the transaction finishes
      (log/debug (trs "Set transaction to automatically roll back..."))
      (jdbc/db-set-rollback-only! conn)
@@ -218,14 +218,22 @@
 ;;; |                                      CONNECTION POOLS & TRANSACTION STUFF                                      |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-(defn- create-connection-pool! [spec]
+(def ^:private application-db-connection-pool-props
+  "Options for c3p0 connection pool for the application DB. These are set in code instead of a properties file because
+  we use separate options for data warehouse DBs. See
+  https://www.mchange.com/projects/c3p0/#configuring_connection_testing for an overview of the options used
+  below (jump to the 'Simple advice on Connection testing' section.)"
+  {"idleConnectionTestPeriod" 60})
+
+(defn- create-connection-pool! [jdbc-spec]
   (db/set-default-quoting-style! (case (db-type)
                                    :postgres :ansi
                                    :h2       :h2
                                    :mysql    :mysql))
   (log/debug (trs "Set default db connection with connection pool..."))
-  (db/set-default-db-connection! (connection-pool/connection-pool-spec spec))
-  (db/set-default-jdbc-options! {:read-columns db.jdbc-protocols/read-columns}))
+  (db/set-default-db-connection! (connection-pool/connection-pool-spec jdbc-spec application-db-connection-pool-props))
+  (db/set-default-jdbc-options! {:read-columns db.jdbc-protocols/read-columns})
+  nil)
 
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
@@ -259,17 +267,20 @@
   false)
 
 (s/defn ^:private verify-db-connection
-  "Test connection to database with DETAILS and throw an exception if we have any troubles connecting."
+  "Test connection to database with `details` and throw an exception if we have any troubles connecting."
   ([db-details]
    (verify-db-connection (:type db-details) db-details))
 
   ([driver :- s/Keyword, details :- su/Map]
    (log/info (u/format-color 'cyan (trs "Verifying {0} Database Connection ..." (name driver))))
+   (classloader/require 'metabase.driver.util)
    (assert (binding [*allow-potentailly-unsafe-connections* true]
-             (classloader/require 'metabase.driver.util)
              ((resolve 'metabase.driver.util/can-connect-with-details?) driver details :throw-exceptions))
      (trs "Unable to connect to Metabase {0} DB." (name driver)))
-   (log/info (trs "Verify Database Connection ... ") (u/emoji "✅"))))
+   (jdbc/with-db-metadata [metadata (jdbc-spec details)]
+     (log/info (trs "Successfully verified {0} {1} application database connection."
+                    (.getDatabaseProductName metadata) (.getDatabaseProductVersion metadata))
+               (u/emoji "✅")))))
 
 (def ^:dynamic ^Boolean *disable-data-migrations*
   "Should we skip running data migrations when setting up the DB? (Default is `false`).
@@ -282,7 +293,7 @@
   "If we are not doing auto migrations then print out migration SQL for user to run manually.
    Then throw an exception to short circuit the setup process and make it clear we can't proceed."
   [db-details]
-  (let [sql (migrate! db-details :print)]
+  (let [sql (migrate! (jdbc-spec db-details) :print)]
     (log/info (str "Database Upgrade Required\n\n"
                    "NOTICE: Your database requires updates to work with this version of Metabase.  "
                    "Please execute the following sql commands on your database before proceeding.\n\n"
@@ -296,10 +307,10 @@
   [auto-migrate? db-details]
   (log/info (trs "Running Database Migrations..."))
   (if auto-migrate?
-    (migrate! db-details :up)
+    (migrate! (jdbc-spec db-details) :up)
     ;; if `MB_DB_AUTOMIGRATE` is false, and we have migrations that need to be ran, print and quit. Otherwise continue
     ;; to start normally
-    (when (liquibase/with-liquibase [liquibase (jdbc-spec)]
+    (when (liquibase/with-liquibase [liquibase (jdbc-spec db-details)]
             (liquibase/has-unrun-migrations? liquibase))
       (print-migrations-and-quit! db-details)))
   (log/info (trs "Database Migrations Current ... ") (u/emoji "✅")))
@@ -312,7 +323,8 @@
     ((resolve 'metabase.db.migrations/run-all!))))
 
 (defn setup-db!*
-  "Connects to db and runs migrations."
+  "Connects to db and runs migrations. Don't use this directly, unless you know what you're doing; use `setup-db!`
+  instead, which can be called more than once without issue and is thread-safe."
   [db-details auto-migrate]
   (u/profile (trs "Database setup")
     (u/with-us-locale
@@ -329,13 +341,22 @@
     (reset! db-setup-finished? true))
   nil)
 
-(defonce ^{:arglists '([]), :doc "Do general preparation of database by validating that we can connect. Caller can
-  specify if we should run any pending database migrations. If DB is already set up, this function will no-op."}
-  setup-db!
-  (partial deref (delay (setup-db-from-env!*))))
+(defonce ^:private db-setup-complete? (atom false))
+(defonce ^:private setup-db-lock (Object.))
+
+(defn setup-db!
+  "Do general preparation of database by validating that we can connect. Caller can specify if we should run any pending
+  database migrations. If DB is already set up, this function will no-op. Thread-safe."
+  []
+  (when-not @db-setup-complete?
+    (locking setup-db-lock
+      (when-not @db-setup-complete?
+        (setup-db-from-env!*)
+        (reset! db-setup-complete? true))))
+  :done)
 
 
-;;; Various convenience fns (experiMENTAL)
+;;; Various convenience fns
 
 (defn join
   "Convenience for generating a HoneySQL `JOIN` clause.
