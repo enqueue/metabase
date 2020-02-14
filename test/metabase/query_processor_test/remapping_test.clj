@@ -121,7 +121,7 @@
 ;;
 ;; Having a self-referencing FK is currently broken with the Redshift and Oracle backends. The issue related to fix
 ;; this is https://github.com/metabase/metabase/issues/8510
-(datasets/expect-with-drivers (disj (qp.test/non-timeseries-drivers-with-feature :foreign-keys) :redshift :oracle :vertica)
+(datasets/expect-with-drivers (disj (qp.test/non-timeseries-drivers-with-feature :foreign-keys) :redshift :oracle :vertica :clickhouse)
   ["Dwight Gresham" "Shad Ferdynand" "Kfir Caj" "Plato Yeshua"]
   (data/dataset test-data-self-referencing-user
     (data/with-temp-objects

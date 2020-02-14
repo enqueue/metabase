@@ -554,7 +554,7 @@
                                [8 9 9 4 11 8 6 10 6 10])
 
                :else
-               (results-by-day (default-timezone-parse-fn :utc)
+               (results-by-day (default-timezone-parse-fn :pacific)
                                (format-in-timezone-fn :pacific)
                                [6 10 4 9 9 8 8 9 7 9]))
              (mt/with-system-timezone-id (timezone :pacific)
