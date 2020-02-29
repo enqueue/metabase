@@ -17,6 +17,7 @@
    "run-with-repl"                     ["with-profile" "+run-with-repl" "repl"]
    "ring"                              ["with-profile" "+ring" "ring"]
    "test"                              ["with-profile" "+test" "test"]
+   "eftest"                            ["with-profile" "+test" "with-profile" "+eftest" "eftest"]
    "bikeshed"                          ["with-profile" "+bikeshed" "bikeshed"
                                         "--max-line-length" "205"
                                         ;; see https://github.com/dakrone/lein-bikeshed/issues/41
@@ -30,7 +31,6 @@
    "repl"                              ["with-profile" "+repl" "repl"]
    "strip-and-compress"                ["with-profile" "+strip-and-compress" "run"]
    "compare-h2-dbs"                    ["with-profile" "+compare-h2-dbs" "run"]}
-
 
   ;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ;; !!                                   PLEASE KEEP THESE ORGANIZED ALPHABETICALLY                                  !!
@@ -201,7 +201,9 @@
     {:init-ns user}} ; starting in the user namespace is a lot faster than metabase.core since it has less deps
 
    :ci
-   {:jvm-opts ["-Xmx2500m"]}
+   {:jvm-opts ["-Xmx2500m"]
+    :eftest   {:report         eftest.report.junit/report
+               :report-to-file "target/test/junit.xml"}}
 
    :install
    {}
@@ -224,8 +226,8 @@
      {:mb-jetty-join "false"}
 
      :repl-options
-     {:init (do (require 'metabase.core)
-                (metabase.core/-main))
+     {:init    (do (require 'metabase.core)
+                   (metabase.core/-main))
       :timeout 60000}}]
 
    ;; start the dev HTTP server with 'lein ring server'
@@ -271,6 +273,10 @@
       #=(eval (format "-Dmb.jetty.port=%d" (+ 3001 (rand-int 500))))
       "-Dmb.api.key=test-api-key"
       "-Duser.language=en"]}]
+
+   :eftest
+   {:plugins [[lein-eftest "0.5.9"]]
+    :eftest  {:multithread? false}}
 
    :include-all-drivers
    [:with-include-drivers-middleware
