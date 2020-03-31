@@ -98,14 +98,14 @@
     :OBJECT                     :type/Dictionary
     :ARRAY                      :type/*} base-type))
 
-(defmethod sql.qp/unix-timestamp->timestamp [:snowflake :seconds]      [_ _ expr] (hsql/call :to_timestamp expr))
-(defmethod sql.qp/unix-timestamp->timestamp [:snowflake :milliseconds] [_ _ expr] (hsql/call :to_timestamp expr 3))
+(defmethod sql.qp/unix-timestamp->honeysql [:snowflake :seconds]      [_ _ expr] (hsql/call :to_timestamp expr))
+(defmethod sql.qp/unix-timestamp->honeysql [:snowflake :milliseconds] [_ _ expr] (hsql/call :to_timestamp expr 3))
 
-(defmethod sql.qp/current-datetime-fn :snowflake
+(defmethod sql.qp/current-datetime-honeysql-form :snowflake
   [_]
   :%current_timestamp)
 
-(defmethod driver/date-add :snowflake
+(defmethod sql.qp/add-interval-honeysql-form :snowflake
   [_ hsql-form amount unit]
   (hsql/call :dateadd
     (hsql/raw (name unit))
@@ -131,6 +131,11 @@
 (defmethod sql.qp/date [:snowflake :quarter]         [_ _ expr] (date-trunc :quarter expr))
 (defmethod sql.qp/date [:snowflake :quarter-of-year] [_ _ expr] (extract :quarter expr))
 (defmethod sql.qp/date [:snowflake :year]            [_ _ expr] (date-trunc :year expr))
+
+
+(defmethod sql.qp/->honeysql [:snowflake :regex-match-first]
+  [driver [_ arg pattern]]
+  (hsql/call :regexp_substr (sql.qp/->honeysql driver arg) (sql.qp/->honeysql driver pattern)))
 
 (defn- db-name
   "As mentioned above, old versions of the Snowflake driver used `details.dbname` to specify the physical database, but
@@ -217,7 +222,7 @@
   [driver database table]
   (jdbc/with-db-metadata [metadata (sql-jdbc.conn/db->pooled-connection-spec database)]
     (->> (assoc (select-keys table [:name :schema])
-           :fields (sql-jdbc.sync/describe-table-fields metadata driver table (db-name database)))
+                :fields (sql-jdbc.sync/describe-table-fields metadata driver table (db-name database)))
          ;; find PKs and mark them
          (sql-jdbc.sync/add-table-pks metadata))))
 
@@ -227,7 +232,7 @@
 
 (defmethod sql-jdbc.execute/set-timezone-sql :snowflake [_] "ALTER SESSION SET TIMEZONE = %s;")
 
-(defmethod sql.qp/current-datetime-fn :snowflake [_] :%current_timestamp)
+(defmethod sql.qp/current-datetime-honeysql-form :snowflake [_] :%current_timestamp)
 
 (defmethod driver/format-custom-field-name :snowflake
   [_ s]

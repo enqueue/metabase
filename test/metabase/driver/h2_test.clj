@@ -82,3 +82,28 @@
   (testing "Non-fractional seconds should remain seconds, but be cast to longs"
     (is (= (hsql/call :dateadd (hx/literal "second") 100 :%now)
            (sql.qp/add-interval-honeysql-form :h2 :%now 100.0 :second)))))
+
+(deftest clob-test
+  (mt/test-driver :h2
+    (testing "Make sure we properly handle rows that come back as `org.h2.jdbc.JdbcClob`"
+      (let [results (qp/process-query (mt/native-query {:query "SELECT cast('Conchúr Tihomir' AS clob) AS name;"}))]
+        (testing "rows"
+          (is (= [["Conchúr Tihomir"]]
+                 (mt/rows results))))
+        (testing "cols"
+          (is (= [{:display_name "NAME"
+                   :base_type    :type/Text
+                   :source       :native
+                   :field_ref    [:field-literal "NAME" :type/Text]
+                   :name         "NAME"}]
+                 (mt/cols results))))))))
+
+(deftest native-query-date-trunc-test
+  (mt/test-driver :h2
+    (testing "A native query that doesn't return a column class name metadata should work correctly (#12150)"
+      (is (= [{:display_name "D"
+               :base_type    :type/DateTime
+               :source       :native
+               :field_ref    [:field-literal "D" :type/DateTime]
+               :name         "D"}]
+             (mt/cols (qp/process-query (mt/native-query {:query "SELECT date_trunc('day', DATE) AS D FROM CHECKINS LIMIT 5;"}))))))))

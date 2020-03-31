@@ -6,20 +6,24 @@
              [db :as mdb]
              [driver :as driver]
              [util :as u]]
-            [metabase.db.spec :as dbspec]
+            [metabase.db
+             [jdbc-protocols :as jdbc-protocols]
+             [spec :as dbspec]]
             [metabase.driver.common :as driver.common]
             [metabase.driver.sql-jdbc
              [connection :as sql-jdbc.conn]
              [execute :as sql-jdbc.execute]
              [sync :as sql-jdbc.sync]]
             [metabase.driver.sql.query-processor :as sql.qp]
+            [metabase.plugins.classloader :as classloader]
             [metabase.query-processor
              [error-type :as error-type]
              [store :as qp.store]]
             [metabase.util
              [honeysql-extensions :as hx]
              [i18n :refer [deferred-tru tru]]])
-  (:import java.time.OffsetTime))
+  (:import [java.sql Clob ResultSet ResultSetMetaData]
+           java.time.OffsetTime))
 
 (driver/register! :h2, :parent :sql-jdbc)
 
@@ -28,6 +32,7 @@
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
 (defmethod driver/supports? [:h2 :full-join] [_ _] false)
+(defmethod driver/supports? [:h2 :regex] [_ _] false)
 
 (defmethod driver/connection-properties :h2
   [_]
@@ -43,7 +48,7 @@
     (connection-string->file+options \"file:my-crazy-db;OPTION=100;OPTION_X=TRUE\")
       -> [\"file:my-crazy-db\" {\"OPTION\" \"100\", \"OPTION_X\" \"TRUE\"}]"
   [^String connection-string]
-  {:pre [connection-string]}
+  {:pre [(string? connection-string)]}
   (let [[file & options] (str/split connection-string #";+")
         options          (into {} (for [option options]
                                     (str/split option #"=")))]
@@ -129,10 +134,10 @@
     expr
     (hsql/raw "timestamp '1970-01-01T00:00:00Z'")))
 
-(defmethod sql.qp/unix-timestamp->timestamp [:h2 :seconds] [_ _ expr]
+(defmethod sql.qp/unix-timestamp->honeysql [:h2 :seconds] [_ _ expr]
   (add-to-1970 expr "second"))
 
-(defmethod sql.qp/unix-timestamp->timestamp [:h2 :millisecond] [_ _ expr]
+(defmethod sql.qp/unix-timestamp->honeysql [:h2 :millisecond] [_ _ expr]
   (add-to-1970 expr "millisecond"))
 
 
@@ -261,12 +266,14 @@
 (defn- connection-string-set-safe-options
   "Add Metabase Security Settings™ to this `connection-string` (i.e. try to keep shady users from writing nasty SQL)."
   [connection-string]
+  {:pre [(string? connection-string)]}
   (let [[file options] (connection-string->file+options connection-string)]
     (file+options->connection-string file (merge options {"IFEXISTS"         "TRUE"
                                                           "ACCESS_MODE_DATA" "r"}))))
 
 (defmethod sql-jdbc.conn/connection-details->spec :h2
   [_ details]
+  {:pre [(map? details)]}
   (dbspec/h2 (if mdb/*allow-potentailly-unsafe-connections*
                details
                (update details :db connection-string-set-safe-options))))
@@ -286,6 +293,17 @@
       (catch Throwable e
         (.close conn)
         (throw e)))))
+
+;; de-CLOB any CLOB values that come back
+(defmethod sql-jdbc.execute/read-column-thunk :h2
+  [_ ^ResultSet rs ^ResultSetMetaData rsmeta ^Integer i]
+  (let [classname (some-> (.getColumnClassName rsmeta i)
+                          (Class/forName true (classloader/the-classloader)))]
+    (if (isa? classname Clob)
+      (fn []
+        (jdbc-protocols/clob->str (.getObject rs i)))
+      (fn []
+        (.getObject rs i)))))
 
 (defmethod sql-jdbc.execute/set-parameter [:h2 OffsetTime]
   [driver prepared-statement i t]

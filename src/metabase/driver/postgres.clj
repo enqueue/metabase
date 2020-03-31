@@ -118,7 +118,7 @@
 ;;; |                                           metabase.driver.sql impls                                            |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-(defmethod sql.qp/unix-timestamp->timestamp [:postgres :seconds]
+(defmethod sql.qp/unix-timestamp->honeysql [:postgres :seconds]
   [_ _ expr]
   (hsql/call :to_timestamp expr))
 
@@ -160,6 +160,10 @@
         :type/IPAddress    (hx/cast :inet value)
         :type/PostgresEnum (hx/quoted-cast database-type value)
         (sql.qp/->honeysql driver value)))))
+
+(defmethod sql.qp/->honeysql [:postgres :regex-match-first]
+  [driver [_ arg pattern]]
+  (hsql/call :substring (hsql/raw (str (hformat/to-sql (sql.qp/->honeysql driver arg)) " FROM '" pattern "'"))))
 
 (defmethod sql.qp/->honeysql [:postgres Time]
   [_ time-value]
@@ -340,6 +344,15 @@
       (some-> (.getString rs i) u/parse-currency))
     (fn []
       (.getObject rs i))))
+
+;; de-CLOB any CLOB values that come back
+(defmethod sql-jdbc.execute/read-column-thunk :postgres
+  [_ ^ResultSet rs _ ^Integer i]
+  (fn []
+    (let [obj (.getObject rs i)]
+      (if (instance? org.postgresql.util.PGobject obj)
+        (.getValue ^org.postgresql.util.PGobject obj)
+        obj))))
 
 ;; Postgres doesn't support OffsetTime
 (defmethod sql-jdbc.execute/set-parameter [:postgres OffsetTime]
