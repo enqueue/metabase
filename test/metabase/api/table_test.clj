@@ -637,86 +637,6 @@
     (let [response ((mt/user->client :rasta) :get 200 (format "table/%d/query_metadata" (mt/id :venues)))]
       (extract-dimension-options response "price"))))
 
-;; Ensure unix timestamps show date binning options, not numeric binning options
-(expect
-  (var-get #'table-api/datetime-dimension-indexes)
-  (mt/dataset sad-toucan-incidents
-    (let [response ((test-users/user->client :rasta) :get 200 (format "table/%d/query_metadata" (mt/id :incidents)))]
-      (dimension-options-for-field response "timestamp"))))
-
-;; Datetime binning options should showup whether the backend supports binning of numeric values or not
-(datasets/expect-with-drivers #{:druid}
-  (var-get #'table-api/datetime-dimension-indexes)
-  (tqpt/with-flattened-dbdef
-    (let [response ((test-users/user->client :rasta) :get 200 (format "table/%d/query_metadata" (mt/id :checkins)))]
-      (dimension-options-for-field response "timestamp"))))
-
-(qpt/expect-with-non-timeseries-dbs
-  (var-get #'table-api/datetime-dimension-indexes)
-  (let [response ((test-users/user->client :rasta) :get 200 (format "table/%d/query_metadata" (mt/id :checkins)))]
-    (dimension-options-for-field response "date")))
-
-(datasets/expect-with-drivers (qpt/normal-drivers-except #{:sparksql :mongo :oracle :redshift :clickhouse})
-  []
-  (mt/dataset test-data-with-time
-    (let [response ((test-users/user->client :rasta) :get 200 (format "table/%d/query_metadata" (mt/id :users)))] (dimension-options-for-field response "last_login_time"))))
-
-;; Test related/recommended entities
-(expect
-  #{:metrics :segments :linked-from :linking-to :tables}
-  (-> ((test-users/user->client :crowberto) :get 200 (format "table/%s/related" (mt/id :venues))) keys set))
-
-;; Nested queries with a fingerprint should have dimension options for binning
-(datasets/expect-with-drivers (mt/normal-drivers-with-feature :binning :nested-queries)
-  (repeat 2 (var-get #'table-api/coordinate-dimension-indexes))
-  (tt/with-temp Card [card {:database_id   (mt/id)
-                            :dataset_query {:database (mt/id)
-                                            :type    :query
-                                            :query    {:source-query {:source-table (mt/id :venues)}}}}]
-    ;; run the Card which will populate its result_metadata column
-    ((test-users/user->client :crowberto) :post 202 (format "card/%d/query" (u/get-id card)))
-    (let [response ((test-users/user->client :crowberto) :get 200 (format "table/card__%d/query_metadata" (u/get-id card)))]
-      (map #(dimension-options-for-field response %)
-           ["latitude" "longitude"]))))
-
-;; Nested queries missing a fingerprint should not show binning-options
-(datasets/expect-with-drivers (mt/normal-drivers-with-feature :binning :nested-queries)
-  [nil nil]
-  (tt/with-temp Card [card {:database_id   (mt/id)
-                            :dataset_query {:database (mt/id)
-                                            :type    :query
-                                            :query    {:source-query {:source-table (mt/id :venues)}}}}]
-    ;; By default result_metadata will be nil (and no fingerprint). Just asking for query_metadata after the card was
-    ;; created but before it was ran should not allow binning
-    (let [response ((test-users/user->client :crowberto) :get 200 (format "table/card__%d/query_metadata" (u/get-id card)))]
-      (map #(dimension-options-for-field response %)
-           ["latitude" "longitude"]))))
-
-;; test POST /api/table/:id/discard_values
-(defn- discard-values [user expected-status-code]
-  (tt/with-temp* [Table       [table        {}]
-                  Field       [field        {:table_id (u/get-id table)}]
-                  FieldValues [field-values {:field_id (u/get-id field), :values ["A" "B" "C"]}]]
-    {:response ((test-users/user->client user) :post expected-status-code (format "table/%d/discard_values" (u/get-id table)))
-     :deleted? (not (db/exists? FieldValues :id (u/get-id field-values)))}))
-
-;; Non-admin toucans should not be allowed to discard values
-(expect
-  {:response "You don't have permissions to do that."
-   :deleted? false}
-  (discard-values :rasta 403))
-
-;; Admins should be able to successfuly delete them
-(expect
-  {:response {:status "success"}
-   :deleted? true}
-  (discard-values :crowberto 200))
-
-;; For tables that don't exist, we should return a 404
-(expect
-  "Not found."
-  ((test-users/user->client :crowberto) :post 404 (format "table/%d/discard_values" Integer/MAX_VALUE)))
-=======
 (deftest datetime-binning-options-test
   (testing "GET /api/table/:id/query_metadata"
     (testing "binning options for datetime fields"
@@ -797,4 +717,3 @@
     (testing "For tables that don't exist, we should return a 404."
       (is (= "Not found."
              ((mt/user->client :crowberto) :post 404 (format "table/%d/discard_values" Integer/MAX_VALUE)))))))
->>>>>>> master
