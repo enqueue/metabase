@@ -76,14 +76,14 @@ describe("metabase-smoketest > admin", () => {
       // Finish & Subscribe
 
       cy.findByText("Take me to Metabase").click();
-      cy.url().should("be", "/");
+      cy.location("pathname").should("eq", "/");
     });
   });
 
   describe("Admin has basic functionality", () => {
     beforeEach(signInAsAdmin);
 
-    it("should add a simple summarized question as admin", () => {
+    it.skip("should add a simple summarized question as admin", () => {
       cy.visit("/");
       cy.contains(", " + admin.first_name);
       // This page does not contain "OUR DATA"
@@ -108,10 +108,7 @@ describe("metabase-smoketest > admin", () => {
       cy.findAllByText("Created At")
         .last()
         .click();
-      cy.get("input[type='text']")
-        .clear()
-        .wait(1)
-        .type("5");
+      cy.get("input[type='text']").type("{selectall}{del}5");
       cy.findByText("Days").click();
       cy.findByText("Years").click();
       sidebar()
@@ -131,7 +128,7 @@ describe("metabase-smoketest > admin", () => {
       cy.findByText("Google");
     });
 
-    it("should add question to a new dashboard in my personal collection as admin", () => {
+    it.skip("should add question to a new dashboard in my personal collection as admin", () => {
       cy.findByText("Save").click();
       cy.findByLabelText("Name")
         .clear()
@@ -140,7 +137,7 @@ describe("metabase-smoketest > admin", () => {
         "Bar graph illustrating where our customers come from",
       );
 
-      // *** Cannot select 'My personal collection' (Issue #12718)
+      // *** Cannot select 'My personal collection' (metabase#12718)
       // cy.findByText("Our analytics").click();
       // cy.findByText("My personal collection").click();
       // cy.contains("My personal collection");
@@ -159,7 +156,8 @@ describe("metabase-smoketest > admin", () => {
       cy.findByText("Save").click();
     });
 
-    it("should add a simple JOINed question as admin", () => {
+    it.skip("should add a simple JOINed question as admin", () => {
+      cy.visit("/");
       cy.findByText("Ask a question");
 
       cy.findByText("Ask a question").click();
@@ -199,6 +197,7 @@ describe("metabase-smoketest > admin", () => {
     });
 
     it("should add a question with a default line visualization as admin", () => {
+      cy.visit("/");
       cy.findByText("Ask a question").click();
 
       cy.findByText("Native query");
@@ -234,7 +233,8 @@ describe("metabase-smoketest > admin", () => {
       cy.findByText("Not now").click();
     });
 
-    it("should create a new dashboard with the previous questions as admin", () => {
+    it.skip("should create a new dashboard with the previous questions as admin", () => {
+      cy.visit("/collection/root");
       // New dashboard
       cy.get(".Icon-add").click();
       cy.findByText("New dashboard").click();
@@ -257,7 +257,7 @@ describe("metabase-smoketest > admin", () => {
       cy.findByText("Save").click();
     });
 
-    it("should add a new user who can perform basic functions", () => {
+    it.skip("should add a new user who can perform basic functions", () => {
       // Sets up route
       cy.server();
       cy.route({
@@ -363,7 +363,7 @@ describe("metabase-smoketest > admin", () => {
         cy.findAllByText("Our analytics")
           .last()
           .click();
-        // *** Won't save into personal collection (Issue #12718)
+        // *** Won't save into personal collection (metabase#12718)
         // cy.findByText("My personal collection").click();
         cy.findAllByText("Save")
           .last()
@@ -383,7 +383,7 @@ describe("metabase-smoketest > admin", () => {
         cy.findAllByText("Our analytics")
           .last()
           .click();
-        // *** Won't save into personal collection (Issue #12718)
+        // *** Won't save into personal collection (metabase#12718)
         cy.findByText("Create").click();
 
         cy.findByText("This dashboard is looking empty.");

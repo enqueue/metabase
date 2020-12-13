@@ -40,16 +40,16 @@
 (defn- normalize-name ^String [db-or-table identifier]
   (let [s (str/replace (name identifier) "-" "_")]
     (case db-or-table
-      :db    (str "v2_" s)
+      :db    (str "v3_" s)
       :table s)))
 
 (def ^:private details
   (delay
     (reduce
      (fn [acc env-var]
-       (assoc acc env-var (tx/db-test-env-var-or-throw :bigquery env-var)))
+       (assoc acc env-var (tx/db-test-env-var :bigquery env-var)))
      {}
-     [:project-id :client-id :client-secret :access-token :refresh-token])))
+     [:project-id :client-id :client-secret :access-token :refresh-token :service-account-json])))
 
 (defn project-id
   "BigQuery project ID that we're using for tests, from the env var `MB_BIGQUERY_TEST_PROJECT_ID`."
@@ -61,7 +61,7 @@
   (partial deref (delay (#'bigquery/database->client {:details @details}))))
 
 (defmethod tx/dbdef->connection-details :bigquery [_ _ {:keys [database-name]}]
-  (assoc @details :dataset-id (normalize-name :db database-name)))
+  (assoc @details :dataset-id (normalize-name :db database-name) :include-user-id-and-hash true))
 
 
 ;;; -------------------------------------------------- Loading Data --------------------------------------------------
@@ -142,13 +142,19 @@
   (let [sql      (format "SELECT count(*) FROM `%s.%s.%s`" (project-id) dataset-id table-id)
         respond  (fn [_ rows]
                    (ffirst rows))
-        response (google/execute
-                  (.query (.jobs (bigquery)) (project-id)
-                          (doto (QueryRequest.)
-                            (.setUseQueryCache false)
-                            (.setUseLegacySql false)
-                            (.setQuery sql))))]
-    (#'bigquery/post-process-native respond response)))
+        client (bigquery)
+        query-response (google/execute
+                        (.query (.jobs client) (project-id)
+                                (doto (QueryRequest.)
+                                  (.setUseQueryCache false)
+                                  (.setUseLegacySql false)
+                                  (.setQuery sql))))
+        job-ref (.getJobReference query-response)
+        job-id (.getJobId job-ref)
+        proj-id (.getProjectId job-ref)
+        location (.getLocation job-ref)
+        response (#'bigquery/get-query-results client proj-id job-id location nil)]
+    (#'bigquery/post-process-native @details respond response)))
 
 (defprotocol ^:private Insertable
   (^:private ->insertable [this]
@@ -224,7 +230,7 @@
                        :data                         (.getRows rows)})))
     ;; Wait up to 30 seconds for all the rows to be loaded and become available by BigQuery
     (let [expected-row-count (count row-maps)]
-      (loop [seconds-to-wait-for-load 10 #_30] ; NOCOMMIT
+      (loop [seconds-to-wait-for-load 30]
         (let [actual-row-count (table-row-count dataset-id table-id)]
           (cond
             (= expected-row-count actual-row-count)

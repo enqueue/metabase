@@ -324,7 +324,8 @@
                       [:source.LONGITUDE :LONGITUDE]
                       [:source.PRICE :PRICE]]
              :from   [[venues-source-honeysql :source]]
-             :where  [:not= :source.text "Coo"]
+             :where  [:or [:not= :source.text "Coo"]
+                      [:= :source.text nil]]
              :limit  10})
            (qp/query->native
             (mt/mbql-query nil
@@ -698,3 +699,21 @@
                                :order-by     [[:asc !year.date]]
                                :limit        1}
                 :fields       [!year.*date]}))))))
+
+;; https://github.com/metabase/metabase/issues/10511
+(deftest correctly-alias-duplicate-names-in-breakout-test
+  (mt/test-drivers (mt/normal-drivers-with-feature :nested-queries :expressions :foreign-keys)
+    (testing "Do we correctly alias name clashes in breakout"
+      (is (= [[ "20th Century Cafe" "Café" 1 ]
+              [ "25°" "Burger" 1 ]
+              [ "33 Taps" "Bar" 1 ]]
+             (mt/formatted-rows [str str int]
+               (mt/run-mbql-query venues
+                 {:source-query {:source-table $$venues
+                                 :aggregation [[:count]]
+                                 :breakout    [$name [:joined-field "c" $categories.name]]
+                                 :joins       [{:source-table $$categories
+                                                :alias        "c"
+                                                :condition    [:= $category_id [:joined-field "c" $categories.id]]}]}
+                  :filter       [:> [:field-literal "count" :type/Number] 0]
+                  :limit        3})))))))

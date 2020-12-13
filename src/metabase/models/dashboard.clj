@@ -18,10 +18,15 @@
              [interface :as i]
              [params :as params]
              [permissions :as perms]
+             [pulse :refer [Pulse]]
+             [pulse-card :refer [PulseCard]]
              [revision :as revision]]
             [metabase.models.revision.diff :refer [build-sentence]]
             [metabase.query-processor.async :as qp.async]
-            [metabase.util.i18n :as ui18n]
+            [metabase.util
+             [i18n :as ui18n :refer [tru]]
+             [schema :as su]]
+            [schema.core :as s]
             [toucan
              [db :as db]
              [hydrate :refer [hydrate]]
@@ -49,20 +54,39 @@
 
 (models/defmodel Dashboard :report_dashboard)
 
+(defn- assert-valid-parameters [{:keys [parameters]}]
+  (when (s/check (s/maybe [{:id su/NonBlankString, s/Keyword s/Any}]) parameters)
+    (throw (ex-info (tru ":parameters must be a sequence of maps with String :id keys")
+                    {:parameters parameters}))))
 
 (defn- pre-delete [dashboard]
-  (db/delete! 'Revision :model "Dashboard" :model_id (u/get-id dashboard))
-  (db/delete! DashboardCard :dashboard_id (u/get-id dashboard)))
+  (db/delete! 'Revision :model "Dashboard" :model_id (u/get-id dashboard)))
 
 (defn- pre-insert [dashboard]
   (let [defaults  {:parameters []}
         dashboard (merge defaults dashboard)]
     (u/prog1 dashboard
-      (collection/check-collection-namespace (map->DashboardInstance dashboard)))))
+      (assert-valid-parameters dashboard)
+      (collection/check-collection-namespace Dashboard (:collection_id dashboard)))))
 
 (defn- pre-update [dashboard]
   (u/prog1 dashboard
-    (collection/check-collection-namespace dashboard)))
+    (assert-valid-parameters dashboard)
+    (collection/check-collection-namespace Dashboard (:collection_id dashboard))))
+
+(defn- post-update [dashboard]
+  ;; find any subscriptions for this dashboard and update the name to match
+  (let [affected (db/query
+                  {:select    [:p.id]
+                   :modifiers [:distinct]
+                   :from      [[Dashboard :d]]
+                   :join      [[DashboardCard :dc] [:= :dc.dashboard_id :d.id]
+                               [PulseCard :pc] [:= :pc.dashboard_card_id :dc.id]
+                               [Pulse :p] [:= :p.id :pc.pulse_id]]
+                   :where     [:= :d.id (:id dashboard)]})]
+    (when (seq affected)
+      (db/update-where! Pulse {:id [:in (map :id affected)]}
+                        :name (:name dashboard)))))
 
 (u/strict-extend (class Dashboard)
   models/IModel
@@ -72,6 +96,7 @@
           :pre-delete  pre-delete
           :pre-insert  pre-insert
           :pre-update  pre-update
+          :post-update post-update
           :post-select public-settings/remove-public-uuid-if-public-sharing-is-disabled})
 
   ;; You can read/write a Dashboard if you can read/write its parent Collection

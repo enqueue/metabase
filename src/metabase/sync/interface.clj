@@ -20,7 +20,6 @@
   "Schema for the expected output of `describe-database`."
   {:tables #{DatabaseMetadataTable}})
 
-
 (def TableMetadataField
   "Schema for a given Field as provided in `describe-table`."
   {:name                           su/NonBlankString
@@ -114,6 +113,7 @@
   {(s/optional-key :percent-json)   (s/maybe Percent)
    (s/optional-key :percent-url)    (s/maybe Percent)
    (s/optional-key :percent-email)  (s/maybe Percent)
+   (s/optional-key :percent-state)  (s/maybe Percent)
    (s/optional-key :average-length) (s/maybe s/Num)})
 
 (def TemporalFingerprint
@@ -136,9 +136,10 @@
 (def Fingerprint
   "Schema for a Field 'fingerprint' generated as part of the analysis stage. Used to power the 'classification'
    sub-stage of analysis. Stored as the `fingerprint` column of Field."
-  {(s/optional-key :global)       GlobalFingerprint
-   (s/optional-key :type)         TypeSpecificFingerprint
-   (s/optional-key :experimental) {s/Keyword s/Any}})
+  (su/open-schema
+    {(s/optional-key :global)       GlobalFingerprint
+     (s/optional-key :type)         TypeSpecificFingerprint
+     (s/optional-key :experimental) {s/Keyword s/Any}}))
 
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
@@ -170,7 +171,8 @@
   {1 #{:type/*}
    2 #{:type/Number}
    3 #{:type/DateTime}
-   4 #{:type/*}})
+   4 #{:type/*}
+   5 #{:type/Text}})
 
 (def latest-fingerprint-version
   "The newest (highest-numbered) version of our Field fingerprints."

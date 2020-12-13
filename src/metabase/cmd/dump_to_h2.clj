@@ -12,7 +12,6 @@
              [jdbc :as jdbc]]
             [clojure.string :as str]
             [colorize.core :as color]
-            [me.raynes.fs :as fs]
             [metabase
              [db :as mdb]
              [util :as u]]
@@ -70,7 +69,7 @@
       (throw e))))
 
 (defn- insert-entity! [target-db-conn {table-name :table, entity-name :name} objs]
-  (print (u/format-color 'blue "Transferring %d instances of %s..." (count objs) entity-name))
+  (print (u/format-color 'blue "Transferring %s data..." entity-name))
   (flush)
   ;; The connection closes prematurely on occasion when we're inserting thousands of rows at once. Break into
   ;; smaller chunks so connection stays alive
@@ -78,11 +77,16 @@
     (insert-chunk! target-db-conn table-name chunk))
   (println-ok))
 
+(def ^:private table-select-fragments
+  {"metabase_field" "ORDER BY id ASC"}) ; ensure ID order to ensure that parent fields are inserted before children
+
 (defn- load-data! [target-db-conn]
-  (println "Source db:" (mdb/jdbc-spec))
+  (println "Source db:" (dissoc (mdb/jdbc-spec) :password))
   (jdbc/with-db-connection [db-conn (mdb/jdbc-spec)]
     (doseq [{table-name :table, :as e} entities
-            :let [rows (jdbc/query db-conn [(str "SELECT * FROM " (name table-name))])]
+            :let [fragment (table-select-fragments (str/lower-case (name table-name)))
+                  rows     (jdbc/query db-conn [(str "SELECT * FROM " (name table-name)
+                                                     (when fragment (str " " fragment)))])]
             :when (seq rows)]
       (insert-entity! target-db-conn e rows))))
 
@@ -92,18 +96,21 @@
 ;;; --------------------------------------------------- Public Fns ---------------------------------------------------
 
 (defn dump-to-h2!
-  "Transfer data from existing database specified by connection string
-  to the H2 DB specified by env vars.  Intended as a tool for migrating
-  from one instance to another using H2 as serialization target.
+  "Transfer data from existing database specified by connection string to the H2 DB specified by env vars. Intended as a
+  tool for migrating from one instance to another using H2 as serialization target.
 
-  Defaults to using `@metabase.db/db-file` as the connection string."
-  [h2-filename]
+  Defaults to using `@metabase.db/db-file` as the connection string.
+
+  Target H2 DB will be deleted if it exists, unless `keep-existing?` is truthy."
+  [h2-filename & [{:keys [keep-existing?]
+                   :or   {keep-existing? false}}]]
   (let [h2-filename (or h2-filename "metabase_dump.h2")]
     (println "Dumping to " h2-filename)
     (doseq [filename [h2-filename
-                    (str h2-filename ".mv.db")]]
-      (when (.exists (io/file filename))
-        (fs/delete filename)
+                      (str h2-filename ".mv.db")]]
+      (when (and (.exists (io/file filename))
+                 (not keep-existing?))
+        (io/delete-file filename)
         (println (u/format-color 'red (trs "Output H2 database already exists: %s, removing.") filename))))
 
     (println "Dumping from configured Metabase db to H2 file" h2-filename)

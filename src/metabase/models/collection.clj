@@ -12,6 +12,7 @@
              [interface :as i]
              [permissions :as perms :refer [Permissions]]]
             [metabase.models.collection.root :as collection.root]
+            [metabase.public-settings.metastore :as settings.metastore]
             [metabase.util :as u]
             [metabase.util
              [i18n :as ui18n :refer [trs tru]]
@@ -173,9 +174,11 @@
 
 (defn root-collection-with-ui-details
   "The special Root Collection placeholder object with some extra details to facilitate displaying it on the FE."
-  []
+  [collection-namespace]
   (assoc root-collection
-         :name (tru "Our analytics")
+         :name (case (keyword collection-namespace)
+                 :snippets (tru "Top folder")
+                 (tru "Our analytics"))
          :id   "root"))
 
 (def ^:private CollectionWithLocationOrRoot
@@ -237,7 +240,7 @@
 
   Because the result may include `nil` for the Root Collection, or may be `:all`, MAKE SURE YOU HANDLE THOSE
   SITUATIONS CORRECTLY before using these IDs to make a DB call. Better yet, use
-  `collection-ids->honeysql-filter-clause` to generate appropriate HoneySQL."
+  `visible-collection-ids->honeysql-filter-clause` to generate appropriate HoneySQL."
   [permissions-set :- #{perms/UserPath}]
   (if (contains? permissions-set "/")
     :all
@@ -336,7 +339,7 @@
   [collection :- CollectionWithLocationAndIDOrRoot]
   (if (collection.root/is-root-collection? collection)
     []
-    (filter i/can-read? (cons (root-collection-with-ui-details) (ancestors collection)))))
+    (filter i/can-read? (cons (root-collection-with-ui-details (:namespace collection)) (ancestors collection)))))
 
 (s/defn parent-id :- (s/maybe su/IntGreaterThanZero)
   "Get the immediate parent `collection` id, if set."
@@ -631,10 +634,11 @@
   application database.
 
   For newly created Collections at the root-level, copy the existing permissions for the Root Collection."
-  [{:keys [location id], :as collection}]
+  [{:keys [location id], collection-namespace :namespace, :as collection}]
   (when-not (is-personal-collection-or-descendant-of-one? collection)
     (let [parent-collection-id (location-path->parent-id location)]
-      (copy-collection-permissions! (or parent-collection-id root-collection) [id]))))
+      (copy-collection-permissions! (or parent-collection-id (assoc root-collection :namespace collection-namespace))
+                                    [id]))))
 
 (defn- post-insert [collection]
   (u/prog1 collection
@@ -791,12 +795,7 @@
   false)
 
 (defn- pre-delete [collection]
-  ;; unset the collection_id for Cards/Pulses in this collection. This is mostly for the sake of tests since IRL we
-  ;; shouldn't be deleting Collections, but rather archiving them instead
-  (doseq [model ['Card 'Pulse 'Dashboard]]
-    (db/update-where! model {:collection_id (u/get-id collection)}
-      :collection_id nil))
-  ;; Now delete all the Children of this Collection
+  ;; Delete all the Children of this Collection
   (db/delete! Collection :location (children-location collection))
   ;; You can't delete a Personal Collection! Unless we enable it because we are simultaneously deleting the User
   (when-not *allow-deleting-personal-collections*
@@ -814,12 +813,18 @@
 (defn perms-objects-set
   "Return the required set of permissions to `read-or-write` `collection-or-id`."
   [collection-or-id read-or-write]
-  ;; This is not entirely accurate as you need to be a superuser to modifiy a collection itself (e.g., changing its
-  ;; name) but if you have write perms you can add/remove cards
-  #{(case read-or-write
-      :read  (perms/collection-read-path collection-or-id)
-      :write (perms/collection-readwrite-path collection-or-id))})
-
+  (let [collection (if (integer? collection-or-id)
+                     (db/select-one [Collection :id :namespace] :id (collection-or-id))
+                     collection-or-id)]
+    ;; HACK Collections in the "snippets" namespace have no-op permissions unless EE enhancements are enabled
+    (if (and (= (u/qualified-name (:namespace collection)) "snippets")
+             (not (settings.metastore/enable-enhancements?)))
+      #{}
+      ;; This is not entirely accurate as you need to be a superuser to modifiy a collection itself (e.g., changing its
+      ;; name) but if you have write perms you can add/remove cards
+      #{(case read-or-write
+          :read  (perms/collection-read-path collection-or-id)
+          :write (perms/collection-readwrite-path collection-or-id))})))
 
 (u/strict-extend (class Collection)
   models/IModel
@@ -952,8 +957,8 @@
                                                 (user->personal-collection-id (u/get-id user))))))))
 
 (defmulti allowed-namespaces
-  "Set of Collection namespaces instances of this model are allowed to go in. By default, only the default
-  namespace (namespace = `nil`)."
+  "Set of Collection namespaces (as keywords) that instances of this model are allowed to go in. By default, only the
+  default namespace (namespace = `nil`)."
   {:arglists '([model])}
   class)
 
@@ -966,17 +971,65 @@
   `allowed-namespaces`), or throw an Exception.
 
     ;; Cards can only go in Collections in the default namespace (namespace = nil)
-    (check-collection-namespace card)"
-  [{collection-id :collection_id, :as object}]
+    (check-collection-namespace Card new-collection-id)"
+  [model collection-id]
   (when collection-id
-    (let [collection-namespace (keyword (db/select-one-field :namespace 'Collection :id collection-id))
-          allowed-namespaces   (allowed-namespaces object)]
+    (let [collection           (or (db/select-one [Collection :namespace] :id collection-id)
+                                   (let [msg (tru "Collection does not exist.")]
+                                     (throw (ex-info msg {:status-code 404
+                                                          :errors      {:collection_id msg}}))))
+          collection-namespace (keyword (:namespace collection))
+          allowed-namespaces   (allowed-namespaces model)]
       (when-not (contains? allowed-namespaces collection-namespace)
         (let [msg (tru "A {0} can only go in Collections in the {1} namespace."
-                       (name object)
+                       (name model)
                        (str/join (format " %s " (tru "or")) (map #(pr-str (or % (tru "default")))
                                                                  allowed-namespaces)))]
           (throw (ex-info msg {:status-code          400
                                :errors               {:collection_id msg}
                                :allowed-namespaces   allowed-namespaces
                                :collection-namespace collection-namespace})))))))
+
+(defn collections->tree
+  "Convert a flat sequence of Collections into a tree structure e.g.
+
+    (collections->tree [A B C D E F G])
+    ;; ->
+    [{:name     \"A\"
+      :children [{:name \"B\"}
+                 {:name     \"C\"
+                  :children [{:name     \"D\"
+                              :children [{:name \"E\"}]}
+                             {:name     \"F\"
+                              :children [{:name \"G\"}]}]}]}
+     {:name \"H\"}]"
+  [collections]
+  (transduce
+   identity
+   (fn ->tree
+     ;; 1. We'll use a map representation to start off with to make building the tree easier. Keyed by Collection ID
+     ;; e.g.
+     ;;
+     ;; {1 {:name "A"
+     ;;     :children {2 {:name "B"}, ...}}}
+     ([] {})
+     ;; 2. For each as we come across it, put it in the correct location in the tree. Convert it's `:location` (e.g.
+     ;; `/1/`) plus its ID to a key path e.g. `[1 :children 2]`
+     ([m collection]
+      (let [path (interpose :children (concat (location-path->ids (:location collection))
+                                              [(:id collection)]))]
+        (assoc-in m path collection)))
+     ;; 3. Once we've build the entire tree structure, go in and convert each ID->Collection map into a flat sequence,
+     ;; sorted by the lowercased Collection name. Do this recursively for the `:children` of each Collection e.g.
+     ;;
+     ;; {1 {:name "A"
+     ;;     :children {2 {:name "B"}, ...}}}
+     ;; ->
+     ;; [{:name "A"
+     ;;   :children [{:name "B"}, ...]}]
+     ([m]
+      (let [vs (for [v (vals m)]
+                 (cond-> v
+                   (:children v) (update :children ->tree)))]
+        (sort-by (comp (fnil u/lower-case-en "") :name) vs))))
+   collections))

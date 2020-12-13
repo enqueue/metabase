@@ -1,6 +1,7 @@
 (ns metabase.models.database
   (:require [cheshire.generate :refer [add-encoder encode-map]]
             [clojure.tools.logging :as log]
+            [medley.core :as m]
             [metabase
              [db :as mdb]
              [driver :as driver]
@@ -38,7 +39,6 @@
   "Unschedule any currently pending sync operation tasks for `database`."
   [database]
   (try
-    (classloader/the-classloader)
     (classloader/require 'metabase.task.sync-databases)
     ((resolve 'metabase.task.sync-databases/unschedule-tasks-for-db!) database)
     (catch Throwable e
@@ -58,9 +58,7 @@
 
 (defn- pre-delete [{id :id, driver :engine, :as database}]
   (unschedule-tasks! database)
-  (db/delete! 'Card        :database_id id)
-  (db/delete! 'Permissions :object      [:like (str (perms/object-path id) "%")])
-  (db/delete! 'Table       :db_id       id)
+  (db/delete! 'Permissions :object [:like (str (perms/object-path id) "%")])
   (try
     (driver/notify-database-updated driver database)
     (catch Throwable e
@@ -98,7 +96,6 @@
 (defn- perms-objects-set [database _]
   #{(perms/object-path (u/get-id database))})
 
-
 (u/strict-extend (class Database)
   models/IModel
   (merge models/IModelDefaults
@@ -107,7 +104,8 @@
                                        :options                     :json
                                        :engine                      :keyword
                                        :metadata_sync_schedule      :cron-string
-                                       :cache_field_values_schedule :cron-string})
+                                       :cache_field_values_schedule :cron-string
+                                       :start_of_week               :keyword})
           :properties     (constantly {:timestamped? true})
           :post-insert    post-insert
           :post-select    post-select
@@ -155,15 +153,22 @@
   "The string to replace passwords with when serializing Databases."
   "**MetabasePass**")
 
+(def ^:const sensitive-fields
+  "List of fields that should be obfuscated in API responses, as they contain sensitive data."
+  [:password :pass :tunnel-pass :tunnel-private-key :tunnel-private-key-passphrase
+   :access-token :refresh-token :service-account-json])
+
 ;; when encoding a Database as JSON remove the `details` for any non-admin User. For admin users they can still see
-;; the `details` but remove the password. No one gets to see this in an API response!
+;; the `details` but remove anything resembling a password. No one gets to see this in an API response!
 (add-encoder
  DatabaseInstance
  (fn [db json-generator]
    (encode-map
-    (cond
-      (not (:is_superuser @*current-user*)) (dissoc db :details)
-      (get-in db [:details :password])      (assoc-in db [:details :password] protected-password)
-      (get-in db [:details :pass])          (assoc-in db [:details :pass] protected-password) ; MongoDB uses "pass" instead of password
-      :else                                 db)
+    (if (not (:is_superuser @*current-user*))
+      (dissoc db :details)
+      (update db :details (fn [details]
+                            (reduce
+                             #(m/update-existing %1 %2 (constantly protected-password))
+                             details
+                             sensitive-fields))))
     json-generator)))

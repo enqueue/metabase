@@ -5,7 +5,9 @@
             [metabase.models.native-query-snippet.permissions :as snippet.perms]
             [metabase.plugins.classloader :as classloader]
             [metabase.util :as u]
-            [metabase.util.i18n :refer [tru]]
+            [metabase.util
+             [i18n :refer [deferred-tru tru]]
+             [schema :as su]]
             [schema.core :as s]
             [toucan
              [db :as db]
@@ -25,7 +27,7 @@
 
 (defn- pre-insert [snippet]
   (u/prog1 snippet
-    (collection/check-collection-namespace snippet)))
+    (collection/check-collection-namespace NativeQuerySnippet (:collection_id snippet))))
 
 (defn- pre-update [{:keys [creator_id id], :as updates}]
   (u/prog1 updates
@@ -33,7 +35,7 @@
     (when (contains? updates :creator_id)
       (when (not= creator_id (db/select-one-field :creator_id NativeQuerySnippet :id id))
         (throw (UnsupportedOperationException. (tru "You cannot update the creator_id of a NativeQuerySnippet.")))))
-    (collection/check-collection-namespace updates)))
+    (collection/check-collection-namespace NativeQuerySnippet (:collection_id updates))))
 
 (u/strict-extend (class NativeQuerySnippet)
   models/IModel
@@ -48,14 +50,17 @@
    i/IObjectPermissionsDefaults
    {:can-read?   snippet.perms/can-read?
     :can-write?  snippet.perms/can-write?
-    :can-create? snippet.perms/can-create?}))
+    :can-create? snippet.perms/can-create?
+    :can-update? snippet.perms/can-update?}))
 
 
 ;;; ---------------------------------------------------- Schemas -----------------------------------------------------
 
 (def NativeQuerySnippetName
   "Schema checking that snippet names do not include \"}\" or start with spaces."
-  (s/pred (every-pred
-           string?
-           (complement #(boolean (re-find #"^\s+" %)))
-           (complement #(boolean (re-find #"}" %))))))
+  (su/with-api-error-message
+   (s/pred (every-pred
+            string?
+            (complement #(boolean (re-find #"^\s+" %)))
+            (complement #(boolean (re-find #"}" %)))))
+   (deferred-tru "snippet names cannot include '}' or start with spaces")))

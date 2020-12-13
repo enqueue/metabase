@@ -41,28 +41,31 @@
 
 (api/defendpoint POST "/"
   "Create a new `NativeQuerySnippet`."
-  [:as {{:keys [content description name]} :body}]
-  {content     s/Str
-   description (s/maybe s/Str)
-   name        snippet/NativeQuerySnippetName}
+  [:as {{:keys [content description name collection_id]} :body}]
+  {content       s/Str
+   description   (s/maybe s/Str)
+   name          snippet/NativeQuerySnippetName
+   collection_id (s/maybe su/IntGreaterThanZero)}
   (check-snippet-name-is-unique name)
-  (api/check-500
-   (db/insert! NativeQuerySnippet
-     {:content     content
-      :creator_id  api/*current-user-id*
-      :description description
-      :name        name})))
+  (let [snippet {:content       content
+                 :creator_id    api/*current-user-id*
+                 :description   description
+                 :name          name
+                 :collection_id collection_id}]
+    (api/create-check NativeQuerySnippet snippet)
+    (api/check-500 (db/insert! NativeQuerySnippet snippet))))
 
-(defn- write-check-and-update-snippet!
+(defn- check-perms-and-update-snippet!
   "Check whether current user has write permissions, then update NativeQuerySnippet with values in `body`.  Returns
   updated/hydrated NativeQuerySnippet"
   [id body]
-  (let [snippet     (api/write-check NativeQuerySnippet id)
+  (let [snippet     (NativeQuerySnippet id)
         body-fields (u/select-keys-when body
-                      :present #{:description}
+                      :present #{:description :collection_id}
                       :non-nil #{:archived :content :name})
         [changes]   (data/diff body-fields snippet)]
     (when (seq changes)
+      (api/update-check snippet changes)
       (when-let [new-name (:name changes)]
         (check-snippet-name-is-unique new-name))
       (db/update! NativeQuerySnippet id changes))
@@ -70,12 +73,12 @@
 
 (api/defendpoint PUT "/:id"
   "Update an existing `NativeQuerySnippet`."
-  [id :as {{:keys [archived content description name] :as body} :body}]
-  {archived    (s/maybe s/Bool)
-   content     (s/maybe s/Str)
-   description (s/maybe s/Str)
-   name        (s/maybe snippet/NativeQuerySnippetName)}
-  (write-check-and-update-snippet! id body))
-
+  [id :as {{:keys [archived content description name collection_id] :as body} :body}]
+  {archived      (s/maybe s/Bool)
+   content       (s/maybe s/Str)
+   description   (s/maybe s/Str)
+   name          (s/maybe snippet/NativeQuerySnippetName)
+   collection_id (s/maybe su/IntGreaterThanZero)}
+  (check-perms-and-update-snippet! id body))
 
 (api/define-routes)

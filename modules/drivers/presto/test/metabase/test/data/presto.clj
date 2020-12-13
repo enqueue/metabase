@@ -94,7 +94,7 @@
 (defmethod tx/create-db! :presto
   [driver {:keys [table-definitions database-name] :as dbdef} & {:keys [skip-drop-db?]}]
   (let [details  (tx/dbdef->connection-details driver :db dbdef)
-        execute! (partial #'presto/execute-presto-query-for-sync details)]
+        execute! (partial #'presto/execute-query-for-sync details)]
     (doseq [tabledef table-definitions
             :let     [rows       (:rows tabledef)
                       ;; generate an ID for each row because we don't have auto increments
@@ -110,7 +110,7 @@
 (defmethod tx/destroy-db! :presto
   [driver {:keys [database-name table-definitions], :as dbdef}]
   (let [details  (tx/dbdef->connection-details driver :db dbdef)
-        execute! (partial #'presto/execute-presto-query-for-sync details)]
+        execute! (partial #'presto/execute-query-for-sync details)]
     (doseq [{:keys [table-name], :as tabledef} table-definitions]
       (println (format "[Presto] destroying %s.%s" (pr-str database-name) (pr-str table-name)))
       (execute! (sql.tx/drop-table-if-exists-sql driver dbdef tabledef))

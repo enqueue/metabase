@@ -119,7 +119,7 @@
                                 (:database query))))))
     ;; make sure this Card doesn't have circular source query references
     (check-for-circular-source-query-references card)
-    (collection/check-collection-namespace card)))
+    (collection/check-collection-namespace Card (:collection_id card))))
 
 (defn- post-insert [card]
   ;; if this Card has any native template tag parameters we need to update FieldValues for any Fields that are
@@ -154,15 +154,11 @@
     ;; make sure this Card doesn't have circular source query references if we're updating the query
     (when (:dataset_query card)
       (check-for-circular-source-query-references card))
-    (collection/check-collection-namespace card)))
+    (collection/check-collection-namespace Card (:collection_id card))))
 
 ;; Cards don't normally get deleted (they get archived instead) so this mostly affects tests
 (defn- pre-delete [{:keys [id]}]
-  (db/delete! 'PulseCard :card_id id)
-  (db/delete! 'Revision :model "Card", :model_id id)
-  (db/delete! 'DashboardCardSeries :card_id id)
-  (db/delete! 'DashboardCard :card_id id)
-  (db/delete! 'CardFavorite :card_id id))
+  (db/delete! 'Revision :model "Card", :model_id id))
 
 (u/strict-extend (class Card)
   models/IModel

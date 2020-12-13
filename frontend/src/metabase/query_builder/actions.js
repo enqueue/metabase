@@ -39,6 +39,7 @@ import {
   getOriginalCard,
   getIsEditing,
   getTransformedSeries,
+  getRawSeries,
   getResultsMetadata,
   getFirstQueryResult,
   getIsPreviewing,
@@ -48,6 +49,7 @@ import {
   getIsRunning,
   getNativeEditorCursorOffset,
   getNativeEditorSelectedText,
+  getSnippetCollectionId,
 } from "./selectors";
 
 import { MetabaseApi, CardApi, UserApi } from "metabase/services";
@@ -68,7 +70,7 @@ import Snippets from "metabase/entities/snippets";
 import { getMetadata } from "metabase/selectors/metadata";
 import { setRequestUnloaded } from "metabase/redux/requests";
 
-import type { Card } from "metabase/meta/types/Card";
+import type { Card } from "metabase-types/types/Card";
 
 type UiControls = {
   isEditing?: boolean,
@@ -350,12 +352,17 @@ export const initializeQB = (location, params) => {
         } else if (card.original_card_id) {
           // deserialized card contains the card id, so just populate originalCard
           originalCard = await loadCard(card.original_card_id);
-          // if the cards are equal then show the original
-          if (cardIsEquivalent(card, originalCard)) {
+          if (
+            cardIsEquivalent(card, originalCard, { checkParameters: false }) &&
+            !cardIsEquivalent(card, originalCard, { checkParameters: true })
+          ) {
+            // if the cards are equal except for parameters, copy over the id to undirty the card
+            card.id = originalCard.id;
+          } else if (cardIsEquivalent(card, originalCard)) {
+            // if the cards are equal then show the original
             card = Utils.copy(originalCard);
           }
         }
-
         // if this card has any snippet tags we might need to fetch snippets pending permissions
         if (
           Object.values(
@@ -471,9 +478,9 @@ export const initializeQB = (location, params) => {
     }
 
     let question = card && new Question(card, getMetadata(getState()));
-    if (params.cardId) {
+    if (question && question.isSaved()) {
       // loading a saved question prevents auto-viz selection
-      question = question && question.lockDisplay();
+      question = question.lockDisplay();
     }
 
     if (question && question.isNative() && snippetFetch) {
@@ -482,6 +489,12 @@ export const initializeQB = (location, params) => {
       question = question.setQuery(
         question.query().updateQueryTextWithNewSnippetNames(snippets),
       );
+    }
+
+    for (const [paramId, value] of Object.entries(
+      (card && card.parameterValues) || {},
+    )) {
+      dispatch(setParameterValue(paramId, value));
     }
 
     card = question && question.card();
@@ -569,9 +582,15 @@ export const setNativeEditorSelectedRange = createAction(
 export const SET_MODAL_SNIPPET = "metabase/qb/SET_MODAL_SNIPPET";
 export const setModalSnippet = createAction(SET_MODAL_SNIPPET);
 
+export const SET_SNIPPET_COLLECTION_ID =
+  "metabase/qb/SET_SNIPPET_COLLECTION_ID";
+export const setSnippetCollectionId = createAction(SET_SNIPPET_COLLECTION_ID);
+
 export const openSnippetModalWithSelectedText = () => (dispatch, getState) => {
-  const content = getNativeEditorSelectedText(getState());
-  dispatch(setModalSnippet({ content }));
+  const state = getState();
+  const content = getNativeEditorSelectedText(state);
+  const collection_id = getSnippetCollectionId(state);
+  dispatch(setModalSnippet({ content, collection_id }));
 };
 
 export const closeSnippetModal = () => (dispatch, getState) => {
@@ -815,6 +834,41 @@ export const updateQuestion = (
       run = false;
     }
 
+    // <PIVOT LOGIC>
+    // We have special logic when going to, coming from, or updating a pivot table.
+    const isPivot = newQuestion.display() === "pivot";
+    const wasPivot = oldQuestion.display() === "pivot";
+
+    if (isPivot && !wasPivot) {
+      // compute the pivot setting now so we can query the appropriate data
+      const series = assocIn(
+        getRawSeries(getState()),
+        [0, "card", "display"],
+        "pivot",
+      );
+      const key = "pivot_table.column_split";
+      const setting = getQuestionWithDefaultVisualizationSettings(
+        newQuestion,
+        series,
+      ).setting(key);
+      newQuestion = newQuestion.updateSettings({ [key]: setting });
+    }
+
+    if (
+      // switching to pivot
+      (isPivot && !wasPivot) ||
+      // switching away from pivot
+      (!isPivot && wasPivot) ||
+      // updating the pivot rows/cols
+      !_.isEqual(
+        newQuestion.setting("pivot_table.column_split"),
+        oldQuestion.setting("pivot_table.column_split"),
+      )
+    ) {
+      run = true; // force a run when switching to/from pivot or updating it's setting
+    }
+    // </PIVOT LOGIC>
+
     // Replace the current question with a new one
     await dispatch.action(UPDATE_QUESTION, { card: newQuestion.card() });
 
@@ -970,7 +1024,7 @@ export const runQuestionQuery = ({
     const originalQuestion: ?Question = getOriginalQuestion(getState());
 
     const cardIsDirty = originalQuestion
-      ? question.isDirtyComparedTo(originalQuestion)
+      ? question.isDirtyComparedToWithoutParameters(originalQuestion)
       : true;
 
     if (shouldUpdateUrl) {
@@ -1032,6 +1086,7 @@ export const queryCompleted = (question, queryResults) => {
     const dirty =
       !originalQuestion ||
       (originalQuestion && question.isDirtyComparedTo(originalQuestion));
+    console.log({ data, originalQuestion, dirty, question });
     if (dirty) {
       // Only update the display if the question is new or has been changed.
       // Otherwise, trust that the question was saved with the correct display.
@@ -1120,7 +1175,6 @@ export const followForeignKey = createThunkAction(FOLLOW_FOREIGN_KEY, fk => {
     const newCard = startNewCard("query", card.dataset_query.database);
 
     newCard.dataset_query.query["source-table"] = fk.origin.table.id;
-    newCard.dataset_query.query.aggregation = ["rows"];
     newCard.dataset_query.query.filter = [
       "and",
       ["=", fk.origin.id, originValue],
