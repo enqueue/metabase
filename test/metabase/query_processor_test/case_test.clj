@@ -64,8 +64,8 @@
       (is (= 90.5  (test-case [:+ [:/ [:sum [:case [[[:< [:field-id (mt/id :venues :price)] 4] [:field-id (mt/id :venues :price)]]]
                                              {:default 0}]] 2] 1]))))
     (testing "Can use expressions as values"
-      (is (= 194.5 (test-case [:sum [:case [[[:< [:field-id (mt/id :venues :price)] 2] [:+ [:field-id (mt/id :venues :price)] 1]]
-                                            [[:< [:field-id (mt/id :venues :price)] 4] [:+ [:/ [:field-id (mt/id :venues :price)] 2] 1]]]]]))))))
+      (is (= 194.5 (test-case [:sum [:case [[[:< [:field-id (mt/id :venues :price)] 2] [:+ [:field-id (mt/id :venues :price)] 1.0]]
+                                            [[:< [:field-id (mt/id :venues :price)] 4] [:+ [:/ [:field-id (mt/id :venues :price)] 2] 1.0]]]]]))))))
 
 (deftest test-case-normalization
   (mt/test-drivers (mt/normal-drivers-with-feature :basic-aggregations)
