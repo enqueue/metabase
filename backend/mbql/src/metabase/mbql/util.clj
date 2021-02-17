@@ -2,15 +2,13 @@
   "Utilitiy functions for working with MBQL queries."
   (:refer-clojure :exclude [replace])
   (:require [clojure.string :as str]
-            [java-time
-             [amount :as t.amount]
-             [core :as t.core]]
+            [java-time.amount :as t.amount]
+            [java-time.core :as t.core]
             [metabase.mbql.schema :as mbql.s]
             [metabase.mbql.schema.helpers :as mbql.s.helpers]
             [metabase.mbql.util.match :as mbql.match]
-            [metabase.util
-             [i18n :refer [tru]]
-             [schema :as su]]
+            [metabase.util.i18n :refer [tru]]
+            [metabase.util.schema :as su]
             [schema.core :as s]))
 
 (defn qualified-name
@@ -427,6 +425,11 @@
     :else
     source-table-id))
 
+(s/defn join->source-table-id :- (s/maybe su/IntGreaterThanZero)
+  "Like `query->source-table-id`, but for a join."
+  [join]
+  (query->source-table-id {:type :query, :query join}))
+
 (s/defn unwrap-field-clause :- (mbql.s.helpers/one-of mbql.s/field-id mbql.s/field-literal)
   "Un-wrap a `Field` clause and return the lowest-level clause it wraps, either a `:field-id` or `:field-literal`."
   [clause :- mbql.s/Field]
@@ -509,7 +512,7 @@
 
 (s/defn expression-with-name :- mbql.s/FieldOrExpressionDef
   "Return the `Expression` referenced by a given `expression-name`."
-  [{inner-query :query} :- mbql.s/Query, expression-name :- (s/cond-pre s/Keyword su/NonBlankString)]
+  [inner-query, expression-name :- (s/cond-pre s/Keyword su/NonBlankString)]
   (let [allowed-names [(qualified-name expression-name) (keyword expression-name)]]
     (loop [{:keys [expressions source-query]} inner-query, found #{}]
       (or
@@ -557,21 +560,21 @@
   (ga-id? id))
 
 (defn temporal-field?
-  "Is `field` used to record something date or time related, i.e. does `field` have a base type or special type that
+  "Is `field` used to record something date or time related, i.e. does `field` have a base type or semantic type that
   derives from `:type/Temporal`?"
   [field]
   (or (isa? (:base_type field)    :type/Temporal)
-      (isa? (:special_type field) :type/Temporal)))
+      (isa? (:semantic_type field) :type/Temporal)))
 
 (defn time-field?
   "Is `field` used to record a time of day (e.g. hour/minute/second), but not the date itself? i.e. does `field` have a
-  base type or special type that derives from `:type/Time`?"
+  base type or semantic type that derives from `:type/Time`?"
   [field]
   (or (isa? (:base_type field)    :type/Time)
-      (isa? (:special_type field) :type/Time)))
+      (isa? (:semantic_type field) :type/Time)))
 
 (defn temporal-but-not-time-field?
-  "Does `field` have a base type or special type that derives from `:type/Temporal`, but not `:type/Time`? (i.e., is
+  "Does `field` have a base type or semantic type that derives from `:type/Temporal`, but not `:type/Time`? (i.e., is
   Field a Date or DateTime?)"
   [field]
   (and (temporal-field? field)

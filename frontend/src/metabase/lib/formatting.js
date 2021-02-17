@@ -54,7 +54,7 @@ import type {
 import type { ClickObject } from "metabase-types/types/Visualization";
 
 // a one or two character string specifying the decimal and grouping separator characters
-export type NumberSeparators = ".," | ", " | ",." | ".";
+export type NumberSeparators = ".," | ", " | ",." | "." | ".’";
 
 // single character string specifying date separators
 export type DateSeparator = "/" | "-" | ".";
@@ -547,7 +547,7 @@ export function formatTime(value: Value) {
 }
 
 // https://github.com/angular/angular.js/blob/v1.6.3/src/ng/directive/input.js#L27
-const EMAIL_WHITELIST_REGEX = /^(?=.{1,254}$)(?=.{1,64}@)[-!#$%&'*+/0-9=?A-Z^_`a-z{|}~]+(\.[-!#$%&'*+/0-9=?A-Z^_`a-z{|}~]+)*@[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/;
+const EMAIL_ALLOW_LIST_REGEX = /^(?=.{1,254}$)(?=.{1,64}@)[-!#$%&'*+/0-9=?A-Z^_`a-z{|}~]+(\.[-!#$%&'*+/0-9=?A-Z^_`a-z{|}~]+)*@[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/;
 
 export function formatEmail(
   value: Value,
@@ -559,7 +559,7 @@ export function formatEmail(
     jsx &&
     rich &&
     (view_as === "email_link" || view_as === "auto") &&
-    EMAIL_WHITELIST_REGEX.test(email)
+    EMAIL_ALLOW_LIST_REGEX.test(email)
   ) {
     return (
       <ExternalLink href={"mailto:" + email}>{link_text || email}</ExternalLink>
@@ -638,7 +638,7 @@ export function formatImage(
   }
 }
 
-// fallback for formatting a string without a column special_type
+// fallback for formatting a string without a column semantic_type
 function formatStringFallback(value: Value, options: FormattingOptions = {}) {
   if (options.view_as !== null) {
     value = formatUrl(value, options);
@@ -767,7 +767,7 @@ export function formatValueRaw(value: Value, options: FormattingOptions = {}) {
   ) {
     return formatDateTime(value, options);
   } else if (typeof value === "string") {
-    if (column && column.special_type != null) {
+    if (column && column.semantic_type != null) {
       return value;
     } else {
       return formatStringFallback(value, options);

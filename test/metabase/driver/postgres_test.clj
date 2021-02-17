@@ -3,22 +3,19 @@
   (:require [clojure.java.jdbc :as jdbc]
             [clojure.test :refer :all]
             [honeysql.core :as hsql]
-            [metabase
-             [driver :as driver]
-             [query-processor :as qp]
-             [sync :as sync]
-             [test :as mt]
-             [util :as u]]
+            [metabase.driver :as driver]
             [metabase.driver.postgres :as postgres]
-            [metabase.driver.sql-jdbc
-             [connection :as sql-jdbc.conn]
-             [execute :as sql-jdbc.execute]]
+            [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
+            [metabase.driver.sql-jdbc.execute :as sql-jdbc.execute]
             [metabase.driver.sql.query-processor :as sql.qp]
-            [metabase.models
-             [database :refer [Database]]
-             [field :refer [Field]]
-             [table :refer [Table]]]
+            [metabase.models.database :refer [Database]]
+            [metabase.models.field :refer [Field]]
+            [metabase.models.table :refer [Table]]
+            [metabase.query-processor :as qp]
+            [metabase.sync :as sync]
             [metabase.sync.sync-metadata :as sync-metadata]
+            [metabase.test :as mt]
+            [metabase.util :as u]
             [toucan.db :as db]))
 
 (defn- drop-if-exists-and-create-db!
@@ -61,8 +58,7 @@
             :OpenSourceSubProtocolOverride true
             :user                          "camsaul"
             :ssl                           true
-            :sslmode                       "require"
-            :sslfactory                    "org.postgresql.ssl.NonValidatingFactory"}
+            :sslmode                       "require"}
            (sql-jdbc.conn/connection-details->spec :postgres
              {:ssl    true
               :host   "localhost"
@@ -79,7 +75,30 @@
              {:host               "localhost"
               :port               "5432"
               :dbname             "cool"
-              :additional-options "prepareThreshold=0"})))))
+              :additional-options "prepareThreshold=0"}))))
+  (testing "user-specified SSL options should always take precendence over defaults"
+    (is (= {:classname                     "org.postgresql.Driver"
+            :subprotocol                   "postgresql"
+            :subname                       "//localhost:5432/bird_sightings"
+            :OpenSourceSubProtocolOverride true
+            :user                          "camsaul"
+            :ssl                           true
+            :sslmode                       "verify-ca"
+            :sslcert                       "my-cert"
+            :sslkey                        "my-key"
+            :sslfactory                    "myfactoryoverride"
+            :sslrootcert                   "myrootcert"}
+           (sql-jdbc.conn/connection-details->spec :postgres
+             {:ssl         true
+              :host        "localhost"
+              :port        5432
+              :dbname      "bird_sightings"
+              :user        "camsaul"
+              :sslmode     "verify-ca"
+              :sslcert     "my-cert"
+              :sslkey      "my-key"
+              :sslfactory  "myfactoryoverride"
+              :sslrootcert "myrootcert"})))))
 
 
 ;;; ------------------------------------------- Tests for sync edge cases --------------------------------------------
@@ -226,7 +245,7 @@
                      [{:field-name "address", :base-type {:native "json"}}]
                      [[(hsql/raw "to_json('{\"street\": \"431 Natoma\", \"city\": \"San Francisco\", \"state\": \"CA\", \"zip\": 94103}'::text)")]]])
         (is (= :type/SerializedJSON
-               (db/select-one-field :special_type Field, :id (mt/id :venues :address))))))))
+               (db/select-one-field :semantic_type Field, :id (mt/id :venues :address))))))))
 
 (mt/defdataset ^:private with-uuid
   [["users"

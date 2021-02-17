@@ -4,24 +4,20 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [compojure.core :refer [POST]]
-            [metabase
-             [query-processor :as qp]
-             [util :as u]]
             [metabase.api.common :as api]
             [metabase.mbql.schema :as mbql.s]
-            [metabase.models
-             [card :refer [Card]]
-             [database :as database :refer [Database]]
-             [query :as query]]
-            [metabase.query-processor
-             [streaming :as qp.streaming]
-             [util :as qputil]]
-            [metabase.query-processor.middleware
-             [constraints :as qp.constraints]
-             [permissions :as qp.perms]]
-            [metabase.util
-             [i18n :refer [trs tru]]
-             [schema :as su]]
+            [metabase.models.card :refer [Card]]
+            [metabase.models.database :as database :refer [Database]]
+            [metabase.models.query :as query]
+            [metabase.query-processor :as qp]
+            [metabase.query-processor.middleware.constraints :as qp.constraints]
+            [metabase.query-processor.middleware.permissions :as qp.perms]
+            [metabase.query-processor.pivot :as pivot]
+            [metabase.query-processor.streaming :as qp.streaming]
+            [metabase.query-processor.util :as qputil]
+            [metabase.util :as u]
+            [metabase.util.i18n :refer [trs tru]]
+            [metabase.util.schema :as su]
             [schema.core :as s]))
 
 ;;; -------------------------------------------- Running a Query Normally --------------------------------------------
@@ -121,5 +117,18 @@
   (qp.perms/check-current-user-has-adhoc-native-query-perms query)
   (qp/query->native-with-spliced-params query))
 
+(api/defendpoint ^:streaming POST "/pivot"
+  "Generate a pivoted dataset for an ad-hoc query"
+  [:as {{:keys      [database]
+         query-type :type
+         :as        query} :body}]
+  {database (s/maybe s/Int)}
+  (when-not database
+    (throw (Exception. (str (tru "`database` is required for all queries.")))))
+  (api/read-check Database database)
+  (let [info {:executed-by api/*current-user-id*
+              :context     (export-format->context :api)}]
+    (qp.streaming/streaming-response [context :api]
+      (pivot/run-pivot-query (assoc query :async? true) info context))))
 
 (api/define-routes)

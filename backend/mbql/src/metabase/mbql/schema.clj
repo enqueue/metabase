@@ -1,12 +1,9 @@
 (ns metabase.mbql.schema
   "Schema for validating a *normalized* MBQL query. This is also the definitive grammar for MBQL, wow!"
-  (:refer-clojure
-   :exclude
-   [count distinct min max + - / * and or not not-empty = < > <= >= time case concat replace])
-  (:require [clojure
-             [core :as core]
-             [set :as set]]
-            [metabase.mbql.schema.helpers :refer [defclause is-clause? one-of]]
+  (:refer-clojure :exclude [count distinct min max + - / * and or not not-empty = < > <= >= time case concat replace])
+  (:require [clojure.core :as core]
+            [clojure.set :as set]
+            [metabase.mbql.schema.helpers :as schema.helpers :refer [defclause is-clause? one-of]]
             [metabase.mbql.util.match :as match]
             [metabase.util.schema :as su]
             [schema.core :as s])
@@ -158,9 +155,10 @@
   filter clauses based on the Field in the clause."
   {(s/optional-key :database_type) (s/maybe su/NonBlankString)
    (s/optional-key :base_type)     (s/maybe su/FieldType)
-   (s/optional-key :special_type)  (s/maybe su/FieldType)
+   (s/optional-key :semantic_type) (s/maybe su/FieldType)
    (s/optional-key :unit)          (s/maybe DatetimeFieldUnit)
-   (s/optional-key :name)          (s/maybe su/NonBlankString)})
+   (s/optional-key :name)          (s/maybe su/NonBlankString)
+   s/Keyword                       s/Any})
 
 ;; Arguments to filter clauses are automatically replaced with [:value <value> <type-info>] clauses by the
 ;; `wrap-value-literals` middleware. This is done to make it easier to implement query processors, because most driver
@@ -231,15 +229,48 @@
    :min-value  s/Num
    :max-value  s/Num})
 
-;; TODO - binning strategy param is disallowed for `:default` and required for the others. For `num-bins` it must also
-;; be an integer.
-(defclause ^{:requires-features #{:binning}} binning-strategy
+;; binning strategy must match one of the three schemas below -- the param differs for different strategies.
+
+(defclause [binning-strategy:num-bins binning-strategy]
   field            BinnableField
-  strategy-name    BinningStrategyName
-  strategy-param   (optional (s/constrained s/Num (complement neg?) "strategy param must be >= 0."))
+  strategy-name    (s/eq :num-bins)
+  num-bins         su/IntGreaterThanZero
   ;; These are added in automatically by the `binning` middleware. Don't add them yourself, as they're just be
   ;; replaced. Driver implementations can rely on this being populated
   resolved-options (optional ResolvedBinningStrategyOptions))
+
+(defclause [binning-strategy:bin-width binning-strategy]
+  field            BinnableField
+  strategy-name    (s/eq :bin-width)
+  bin-width        (s/constrained s/Num (complement neg?) "bin width must be >= 0.")
+  resolved-options (optional ResolvedBinningStrategyOptions))
+
+(defclause [binning-strategy:default binning-strategy]
+  field            BinnableField
+  strategy-name    (s/eq :default)
+  _                (optional (s/eq nil))
+  resolved-options (optional ResolvedBinningStrategyOptions))
+
+;; this is only used for purposes of error messages for a `binning-strategy` that doesn't match one of the three
+;; specific schemas above
+(defclause [^:private binning-strategy:-generic binning-strategy]
+  field            BinnableField
+  strategy-name    BinningStrategyName
+  param            (optional s/Num)
+  resolved-options (optional ResolvedBinningStrategyOptions))
+
+(def ^{:requires-features #{:binning}} ^{:clause-name :binning-strategy} binning-strategy
+  "Schema for a valid `:binning-strategy` clause."
+  (letfn [(strategy= [a-strategy]
+            (fn [clause]
+              (core/and (is-clause? :binning-strategy clause)
+                        (let [[_ _ strategy] clause]
+                          (core/= strategy a-strategy)))))]
+    (s/conditional
+     (strategy= :num-bins)  binning-strategy:num-bins
+     (strategy= :bin-width) binning-strategy:bin-width
+     (strategy= :default)   binning-strategy:default
+     :else                  binning-strategy:-generic)))
 
 (def ^:private Field*
   (one-of field-id field-literal joined-field fk-> datetime-field expression binning-strategy))
@@ -730,15 +761,15 @@
   form; for explicit `:source-query`s you should usually include this information yourself when specifying explicit
   `:source-query`s."
   ;; TODO - there is a very similar schema in `metabase.sync.analyze.query-results`; see if we can merge them
-  {:name                          su/NonBlankString
-   :base_type                     su/FieldType
+  {:name                           su/NonBlankString
+   :base_type                      su/FieldType
    ;; this is only used by the annotate post-processing stage, not really needed at all for pre-processing, might be
    ;; able to remove this as a requirement
-   :display_name                  su/NonBlankString
-   (s/optional-key :special_type) (s/maybe su/FieldType)
+   :display_name                   su/NonBlankString
+   (s/optional-key :semantic_type) (s/maybe su/FieldType)
    ;; you'll need to provide this in order to use BINNING
-   (s/optional-key :fingerprint)  (s/maybe su/Map)
-   s/Any                          s/Any})
+   (s/optional-key :fingerprint)   (s/maybe su/Map)
+   s/Any                           s/Any})
 
 (def ^java.util.regex.Pattern source-table-card-id-regex
   "Pattern that matches `card__id` strings that can be used as the `:source-table` of MBQL queries."
@@ -872,11 +903,11 @@
     (s/optional-key :source-table) SourceTable
     (s/optional-key :aggregation)  (su/non-empty [Aggregation])
     (s/optional-key :breakout)     (su/non-empty [Field])
-    ;; TODO - expressions keys should be strings; fix this when we get a chance
+    ;; TODO - expressions keys should be strings; fix this when we get a chance (#14647)
     (s/optional-key :expressions)  {s/Keyword FieldOrExpressionDef}
     (s/optional-key :fields)       Fields
     (s/optional-key :filter)       Filter
-    (s/optional-key :limit)        su/IntGreaterThanZero
+    (s/optional-key :limit)        su/IntGreaterThanOrEqualToZero
     (s/optional-key :order-by)     (su/distinct (su/non-empty [OrderBy]))
     ;; page = page num, starting with 1. items = number of items per page.
     ;; e.g.

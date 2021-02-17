@@ -3,15 +3,14 @@
             [medley.core :as m]
             [metabase.domain-entities.specs :refer [domain-entity-specs MBQL]]
             [metabase.mbql.util :as mbql.u]
-            [metabase.models
-             [card :refer [Card]]
-             [table :as table :refer [Table]]]
+            [metabase.models.card :refer [Card]]
+            [metabase.models.table :as table :refer [Table]]
             [metabase.util :as u]
             [schema.core :as s]))
 
 (def ^:private ^{:arglists '([field])} field-type
   "Return the most specific type of a given field."
-  (some-fn :special_type :base_type))
+  (some-fn :semantic_type :base_type))
 
 (def SourceName
   "A reference to a `SourceEntity`."

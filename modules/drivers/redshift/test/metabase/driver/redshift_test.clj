@@ -1,16 +1,22 @@
 (ns metabase.driver.redshift-test
-  (:require [clojure
-             [string :as str]
-             [test :refer :all]]
-            [metabase
-             [public-settings :as pubset]
-             [query-processor :as qp]
-             [test :as mt]
-             [util :as u]]
+  (:require [clojure.java.jdbc :as jdbc]
+            [clojure.string :as str]
+            [clojure.test :refer :all]
+            [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
             [metabase.driver.sql-jdbc.execute :as execute]
+            [metabase.models.database :refer [Database]]
+            [metabase.models.field :refer [Field]]
+            [metabase.models.table :refer [Table]]
             [metabase.plugins.jdbc-proxy :as jdbc-proxy]
+            [metabase.public-settings :as pubset]
+            [metabase.query-processor :as qp]
+            [metabase.sync :as sync]
+            [metabase.test :as mt]
+            [metabase.test.data.interface :as tx]
             [metabase.test.data.redshift :as rstest]
-            [metabase.test.fixtures :as fixtures])
+            [metabase.test.fixtures :as fixtures]
+            [metabase.util :as u]
+            [toucan.db :as db])
   (:import metabase.plugins.jdbc_proxy.ProxyDriver))
 
 (use-fixtures :once (fixtures/initialize :plugins))
@@ -102,7 +108,7 @@
    (testing "expects spectrum schema to exist"
      (is (= [{:description     nil
               :table_id        (mt/id :extsales)
-              :special_type    nil
+              :semantic_type    nil
               :name            "buyerid"
               :settings        nil
               :source          :fields
@@ -114,7 +120,7 @@
               :base_type       :type/Integer}
              {:description     nil
               :table_id        (mt/id :extsales)
-              :special_type    nil
+              :semantic_type    nil
               :name            "salesid"
               :settings        nil
               :source          :fields
@@ -137,17 +143,52 @@
                          [:data :cols])))))))
 
 (deftest parameters-test
-  (testing "Native query parameters should work with filters."
-    (is (= [[693 "2015-12-29T00:00:00Z" 10 90]]
-           (mt/rows
-             (qp/process-query
-              {:database   (mt/id)
-               :type       :native
-               :native     {:query         "select * from checkins where {{date}} order by date desc limit 1;"
-                            :template-tags {"date" {:name         "date"
-                                                    :display-name "date"
-                                                    :type         :dimension
-                                                    :dimension    [:field-id (mt/id :checkins :date)]}}}
-               :parameters [{:type :date/all-options
-                             :target [:dimension [:template-tag "date"]]
-                             :value "past30years"}]}))))))
+  (mt/test-driver :redshift
+    (testing "Native query parameters should work with filters. (#12984)"
+      (is (= [[693 "2015-12-29T00:00:00Z" 10 90]]
+             (mt/rows
+               (qp/process-query
+                {:database   (mt/id)
+                 :type       :native
+                 :native     {:query         (str "select * "
+                                                  (format "from \"%s\".test_data_checkins " rstest/session-schema-name)
+                                                  "where {{date}} "
+                                                  "order by date desc "
+                                                  "limit 1;")
+                              :template-tags {"date" {:name         "date"
+                                                      :display-name "date"
+                                                      :type         :dimension
+                                                      :dimension    [:field-id (mt/id :checkins :date)]}}}
+                 :parameters [{:type   :date/all-options
+                               :target [:dimension [:template-tag "date"]]
+                               :value  "past30years"}]})))))))
+
+(deftest redshift-types-test
+  (mt/test-driver
+    :redshift
+    (testing "Redshift specific types should be synced correctly"
+      (let [db-details   (tx/dbdef->connection-details :redshift)
+            tbl-nm       "redshift_specific_types"
+            qual-tbl-nm  (str rstest/session-schema-name "." tbl-nm)
+            view-nm      "late_binding_view"
+            qual-view-nm (str rstest/session-schema-name "." view-nm)]
+        (mt/with-temp Database [database {:engine :redshift, :details db-details}]
+          ;; create a table with a CHARACTER VARYING and a NUMERIC column, and a late bound view that selects from it
+          (#'rstest/execute!
+           (str "DROP TABLE IF EXISTS %1$s;%n"
+                "CREATE TABLE %1$s(weird_varchar CHARACTER VARYING(50), numeric_col NUMERIC(10,2));%n"
+                "CREATE OR REPLACE VIEW %2$s AS SELECT * FROM %1$s WITH NO SCHEMA BINDING;")
+           qual-tbl-nm
+           qual-view-nm)
+          ;; sync the schema again to pick up the new view (and table, though we aren't checking that)
+          (sync/sync-database! database)
+          (is (contains?
+               (db/select-field :name Table :db_id (u/the-id database)) ; the new view should have been synced
+               view-nm))
+          (let [table-id (db/select-one-id Table :db_id (u/the-id database), :name view-nm)]
+            ;; and its columns' :base_type should have been identified correctly
+            (is (= [{:name "weird_varchar", :database_type "character varying(50)", :base_type :type/Text}
+                    {:name "numeric_col",   :database_type "numeric(10,2)",         :base_type :type/Decimal}]
+                   (map
+                    (partial into {})
+                    (db/select [Field :name :database_type :base_type] :table_id table-id))))))))))

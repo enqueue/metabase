@@ -1,14 +1,16 @@
 (ns metabase.db.metadata-queries
-  "Predefined MBQL queries for getting metadata about an external database."
+  "Predefined MBQL queries for getting metadata about an external database.
+
+  TODO -- these have nothing to do with the application database. This namespace should be renamed something like
+  `metabase.driver.util.metadata-queries`."
   (:require [clojure.tools.logging :as log]
-            [metabase
-             [driver :as driver]
-             [query-processor :as qp]
-             [util :as u]]
+            [metabase.driver :as driver]
             [metabase.driver.util :as driver.u]
             [metabase.models.table :as table :refer [Table]]
+            [metabase.query-processor :as qp]
             [metabase.query-processor.interface :as qpi]
             [metabase.sync.interface :as si]
+            [metabase.util :as u]
             [metabase.util.schema :as su]
             [schema.core :as s]
             [toucan.db :as db]))
@@ -88,7 +90,7 @@
 
 (def max-sample-rows
   "The maximum number of values we should return when using `table-rows-sample`. This many is probably fine for
-  inferring special types and what-not; we don't want to scan millions of values at any rate."
+  inferring semantic types and what-not; we don't want to scan millions of values at any rate."
   10000)
 
 (def TableRowsSampleOptions
@@ -101,9 +103,9 @@
 
   JSON and XML fields are now marked as `:type/Structured` but in the past were marked as `:type/Text` so its not
   enough to just check the base type."
-  [{:keys [base_type special_type]}]
+  [{:keys [base_type semantic_type]}]
   (and (= base_type :type/Text)
-       (not (isa? special_type :type/Structured))))
+       (not (isa? semantic_type :type/Structured))))
 
 (defn- table-rows-sample-query
   "Returns the mbql query to query a table for sample rows"

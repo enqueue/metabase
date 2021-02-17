@@ -1,10 +1,9 @@
 (ns metabase.sync.interface
   "Schemas and constants used by the sync code."
   (:require [clj-time.core :as time]
-            [metabase.models
-             [database :refer [Database]]
-             [field :refer [Field]]
-             [table :refer [Table]]]
+            [metabase.models.database :refer [Database]]
+            [metabase.models.field :refer [Field]]
+            [metabase.models.table :refer [Table]]
             [metabase.util :as u]
             [metabase.util.schema :as su]
             [schema.core :as s]))
@@ -26,7 +25,7 @@
    :database-type                  (s/maybe su/NonBlankString) ; blank if the Field is all NULL & untyped, i.e. in Mongo
    :base-type                      su/FieldType
    :database-position              su/IntGreaterThanOrEqualToZero
-   (s/optional-key :special-type)  (s/maybe su/FieldType)
+   (s/optional-key :semantic-type) (s/maybe su/FieldType)
    (s/optional-key :field-comment) (s/maybe su/NonBlankString)
    (s/optional-key :pk?)           s/Bool
    (s/optional-key :nested-fields) #{(s/recursive #'TableMetadataField)}

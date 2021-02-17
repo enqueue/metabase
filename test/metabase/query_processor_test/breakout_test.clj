@@ -1,21 +1,18 @@
 (ns metabase.query-processor-test.breakout-test
   "Tests for the `:breakout` clause."
   (:require [clojure.test :refer :all]
-            [metabase
-             [query-processor :as qp]
-             [query-processor-test :as qp.test]
-             [test :as mt]
-             [util :as u]]
             [metabase.mbql.schema :as mbql.s]
-            [metabase.models
-             [card :refer [Card]]
-             [dimension :refer [Dimension]]
-             [field :refer [Field]]]
-            [metabase.query-processor.middleware
-             [add-dimension-projections :as add-dim-projections]
-             [add-source-metadata :as add-source-metadata]]
+            [metabase.models.card :refer [Card]]
+            [metabase.models.dimension :refer [Dimension]]
+            [metabase.models.field :refer [Field]]
+            [metabase.query-processor :as qp]
+            [metabase.query-processor-test :as qp.test]
+            [metabase.query-processor.middleware.add-dimension-projections :as add-dim-projections]
+            [metabase.query-processor.middleware.add-source-metadata :as add-source-metadata]
             [metabase.query-processor.test-util :as qp.test-util]
-            [metabase.test.data :as data]))
+            [metabase.test :as mt]
+            [metabase.test.data :as data]
+            [metabase.util :as u]))
 
 (deftest basic-test
   (mt/test-drivers (mt/normal-drivers)
@@ -71,16 +68,16 @@
 
 (deftest internal-remapping-test
   (mt/test-drivers (mt/normal-drivers)
-    (data/with-venue-category-remapping "Foo"
+    (mt/with-column-remappings [venues.category_id (values-of categories.name)]
       (let [{:keys [rows cols]} (qp.test/rows-and-cols
                                   (mt/format-rows-by [int int str]
                                     (mt/run-mbql-query venues
                                       {:aggregation [[:count]]
                                        :breakout    [$category_id]
                                        :limit       5})))]
-        (is (= [(assoc (qp.test/breakout-col :venues :category_id) :remapped_to "Foo")
+        (is (= [(assoc (qp.test/breakout-col :venues :category_id) :remapped_to "Category ID")
                 (qp.test/aggregate-col :count)
-                (#'add-dim-projections/create-remapped-col "Foo" (mt/format-name "category_id") :type/Text)]
+                (#'add-dim-projections/create-remapped-col "Category ID" (mt/format-name "category_id") :type/Text)]
                cols))
         (is (= [[2 8 "American"]
                 [3 2 "Artisan"]
@@ -91,10 +88,10 @@
 
 (deftest order-by-test
   (mt/test-drivers (mt/normal-drivers-with-feature :foreign-keys)
-    (mt/with-temp Dimension [_ {:field_id                (data/id :venues :category_id)
-                                :name                    "Foo"
+    (mt/with-temp Dimension [_ {:field_id                (mt/id :venues :category_id)
+                                :name                    "Category ID"
                                 :type                    :external
-                                :human_readable_field_id (data/id :categories :name)}]
+                                :human_readable_field_id (mt/id :categories :name)}]
       (doseq [[sort-order expected] {:desc ["Wine Bar" "Thai" "Thai" "Thai" "Thai" "Steakhouse" "Steakhouse"
                                             "Steakhouse" "Steakhouse" "Southern"]
                                      :asc  ["American" "American" "American" "American" "American" "American" "American"
@@ -185,7 +182,7 @@
         ;; base_type can differ slightly between drivers and it's really not important for the purposes of this test
         (is (= (assoc (dissoc (qp.test/breakout-col :venues :latitude) :base_type)
                       :binning_info {:min_value 10.0, :max_value 50.0, :num_bins 4, :bin_width 10.0, :binning_strategy :bin-width}
-                      :field_ref    [:binning-strategy (data/$ids venues $latitude) :bin-width nil
+                      :field_ref    [:binning-strategy (data/$ids venues $latitude) :bin-width 10.0
                                      {:min-value 10.0, :max-value 50.0, :num-bins 4, :bin-width 10.0}])
                (-> (mt/run-mbql-query venues
                      {:aggregation [[:count]]
@@ -209,7 +206,7 @@
 (deftest binning-error-test
   (mt/test-drivers (mt/normal-drivers-with-feature :binning)
     (mt/suppress-output
-      (mt/with-temp-vals-in-db Field (data/id :venues :latitude) {:fingerprint {:type {:type/Number {:min nil, :max nil}}}}
+      (mt/with-temp-vals-in-db Field (mt/id :venues :latitude) {:fingerprint {:type {:type/Number {:min nil, :max nil}}}}
         (is (= {:status :failed
                 :class  clojure.lang.ExceptionInfo
                 :error  "Unable to bin Field without a min/max value"}
@@ -222,8 +219,8 @@
 (defn- nested-venues-query [card-or-card-id]
   {:database mbql.s/saved-questions-virtual-database-id
    :type     :query
-   :query    {:source-table (str "card__" (u/get-id card-or-card-id))
-              :aggregation  [:count]
+   :query    {:source-table (str "card__" (u/the-id card-or-card-id))
+              :aggregation  [[:count]]
               :breakout     [[:binning-strategy [:field-literal (mt/format-name :latitude) :type/Float] :num-bins 20]]}})
 
 (deftest bin-nested-queries-test
@@ -234,8 +231,7 @@
                                   {:source-query {:source-table $$venues}}))]
         (is (= [[10.0 1] [32.0 4] [34.0 57] [36.0 29] [40.0 9]]
                (mt/formatted-rows [1.0 int]
-                 (qp/process-query
-                  (nested-venues-query card)))))))
+                 (qp/process-query (nested-venues-query card)))))))
 
     (testing "should be able to use :default binning in a nested query"
       (mt/with-temporary-setting-values [breakout-bin-width 5.0]
@@ -253,12 +249,13 @@
       ;; middleware is doing the right thing
       (with-redefs [add-source-metadata/mbql-source-query->metadata (constantly nil)]
         (mt/with-temp Card [card {:dataset_query (mt/mbql-query venues)}]
-          (is (thrown?
-               Exception
-               (mt/suppress-output
-                 (qp.test/rows
+          (mt/with-temp-vals-in-db Card (:id card) {:result_metadata nil}
+            (is (thrown?
+                 Exception
+                 (mt/suppress-output
+                  (qp.test/rows
                    (qp/process-query
-                    (nested-venues-query card)))))))))))
+                    (nested-venues-query card))))))))))))
 
 (deftest field-in-breakout-and-fields-test
   (mt/test-drivers (mt/normal-drivers)

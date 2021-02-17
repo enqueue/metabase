@@ -2,19 +2,15 @@
   (:require [clojure.string :as str]
             [clojure.tools.logging :as log]
             [java-time :as t]
-            [metabase
-             [config :as config]
-             [types :as types]
-             [util :as u]]
+            [metabase.config :as config]
             [metabase.driver.util :as driver.u]
-            [metabase.models
-             [common :as common]
-             [setting :as setting :refer [defsetting]]]
+            [metabase.models.setting :as setting :refer [defsetting]]
             [metabase.plugins.classloader :as classloader]
             [metabase.public-settings.metastore :as metastore]
-            [metabase.util
-             [i18n :as i18n :refer [available-locales-with-names deferred-tru trs tru]]
-             [password :as password]]
+            [metabase.types :as types]
+            [metabase.util :as u]
+            [metabase.util.i18n :as i18n :refer [available-locales-with-names deferred-tru trs tru]]
+            [metabase.util.password :as password]
             [toucan.db :as db])
   (:import java.util.UUID))
 
@@ -319,7 +315,7 @@
   "Available report timezone options"
   :visibility :public
   :setter     :none
-  :getter     (constantly common/timezones))
+  :getter     (comp sort t/available-zone-ids))
 
 (defsetting engines
   "Available database engines"

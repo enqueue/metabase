@@ -1,10 +1,9 @@
 (ns metabase.query-processor.middleware.auto-bucket-datetimes-test
   (:require [clojure.test :refer :all]
-            [metabase
-             [test :as mt]
-             [util :as u]]
             [metabase.models.field :refer [Field]]
-            [metabase.query-processor.middleware.auto-bucket-datetimes :as auto-bucket-datetimes]))
+            [metabase.query-processor.middleware.auto-bucket-datetimes :as auto-bucket-datetimes]
+            [metabase.test :as mt]
+            [metabase.util :as u]))
 
 (defn- auto-bucket [query]
   (:pre (mt/test-qp-middleware auto-bucket-datetimes/auto-bucket-datetimes query)))
@@ -15,7 +14,7 @@
 
 (deftest auto-bucket-in-breakout-test
   (testing "does a :type/DateTime Field get auto-bucketed when present in a breakout clause?"
-    (mt/with-temp Field [field {:base_type :type/DateTime, :special_type nil}]
+    (mt/with-temp Field [field {:base_type :type/DateTime, :semantic_type nil}]
       (is (= {:source-table 1
               :breakout     [[:datetime-field [:field-id (u/get-id field)] :day]]}
              (auto-bucket-mbql
@@ -28,7 +27,7 @@
     ;;
     ;; e.g. `[:= <field> "2018-11-19"] should get rewritten as `[:= [:datetime-field <field> :day] "2018-11-19"]` if
     ;; `<field>` is a `:type/DateTime` Field
-    (mt/with-temp Field [field {:base_type :type/DateTime, :special_type nil}]
+    (mt/with-temp Field [field {:base_type :type/DateTime, :semantic_type nil}]
       (is (= {:source-table 1
               :filter       [:= [:datetime-field [:field-id (u/get-id field)] :day] "2018-11-19"]}
              (auto-bucket-mbql
@@ -37,8 +36,8 @@
 
 (deftest auto-bucket-in-compound-filter-clause-test
   (testing "Fields should still get auto-bucketed when present in compound filter clauses (#9127)"
-    (mt/with-temp* [Field [field-1 {:base_type :type/DateTime, :special_type nil}]
-                    Field [field-2 {:base_type :type/Text, :special_type nil}]]
+    (mt/with-temp* [Field [field-1 {:base_type :type/DateTime, :semantic_type nil}]
+                    Field [field-2 {:base_type :type/Text, :semantic_type nil}]]
       (is (= {:source-table 1
               :filter       [:and
                              [:= [:datetime-field [:field-id (u/get-id field-1)] :day] "2018-11-19"]
@@ -60,7 +59,7 @@
 (deftest do-not-autobucket-when-compared-to-non-yyyy-MM-dd-strings-test
   (testing (str "On the other hand, we shouldn't auto-bucket Fields inside a filter clause if they are being compared "
                 "against a datetime string that includes more than just yyyy-MM-dd:")
-    (mt/with-temp Field [field {:base_type :type/DateTime, :special_type nil}]
+    (mt/with-temp Field [field {:base_type :type/DateTime, :semantic_type nil}]
       (is (= {:source-table 1
               :filter       [:= [:field-id (u/get-id field)] "2018-11-19T14:11:00"]}
              (auto-bucket-mbql
@@ -74,14 +73,14 @@
              :filter       [:= [:field-literal "timestamp" :type/DateTime] "2018-11-19T14:11:00"]})))
 
     (testing "for breakouts or other filters with multiple args, all args must be yyyy-MM-dd"
-      (mt/with-temp Field [field {:base_type :type/DateTime, :special_type nil}]
+      (mt/with-temp Field [field {:base_type :type/DateTime, :semantic_type nil}]
         (is (= {:source-table 1
                 :filter       [:between [:datetime-field [:field-id (u/get-id field)] :day] "2018-11-19" "2018-11-20"]}
                (auto-bucket-mbql
                 {:source-table 1
                  :filter       [:between [:field-id (u/get-id field)] "2018-11-19" "2018-11-20"]}))))
 
-      (mt/with-temp Field [field {:base_type :type/DateTime, :special_type nil}]
+      (mt/with-temp Field [field {:base_type :type/DateTime, :semantic_type nil}]
         (is (= {:source-table 1
                 :filter       [:between [:field-id (u/get-id field)] "2018-11-19" "2018-11-20T14:20:00.000Z"]}
                (auto-bucket-mbql
@@ -90,7 +89,7 @@
 
 (deftest only-auto-bucket-appropriate-instances-test
   (testing "if a Field occurs more than once we should only rewrite the instances that should be rebucketed"
-    (mt/with-temp Field [field {:base_type :type/DateTime, :special_type nil}]
+    (mt/with-temp Field [field {:base_type :type/DateTime, :semantic_type nil}]
       (is (= {:source-table 1
               :breakout     [[:datetime-field [:field-id (u/get-id field)] :day]]
               :filter       [:= [:field-id (u/get-id field)] "2018-11-20T14:20:00.000Z"]}
@@ -99,7 +98,7 @@
                :breakout     [[:field-id (u/get-id field)]]
                :filter       [:= [:field-id (u/get-id field)] "2018-11-20T14:20:00.000Z"]}))))
 
-    (mt/with-temp Field [field {:base_type :type/DateTime, :special_type nil}]
+    (mt/with-temp Field [field {:base_type :type/DateTime, :semantic_type nil}]
       (is (= {:source-table 1
               :breakout     [[:datetime-field [:field-id (u/get-id field)] :month]]
               :filter       [:= [:datetime-field [:field-id (u/get-id field)] :day] "2018-11-20"]}
@@ -110,7 +109,7 @@
 
 (deftest do-not-auto-bucket-inside-time-interval-test
   (testing "We should not try to bucket Fields inside a `time-interval` clause as that would be invalid"
-    (mt/with-temp Field [field {:base_type :type/DateTime, :special_type nil}]
+    (mt/with-temp Field [field {:base_type :type/DateTime, :semantic_type nil}]
       (is (= {:source-table 1
               :filter       [:time-interval [:field-id (u/get-id field)] -30 :day]}
              (auto-bucket-mbql
@@ -119,7 +118,7 @@
 
 (deftest do-not-auto-bucket-inappropriate-filter-clauses-test
   (testing "Don't auto-bucket fields in non-equality or non-comparison filter clauses, for example `:is-null`:"
-    (mt/with-temp Field [field {:base_type :type/DateTime, :special_type nil}]
+    (mt/with-temp Field [field {:base_type :type/DateTime, :semantic_type nil}]
       (is (= {:source-table 1
               :filter       [:is-null [:field-id (u/get-id field)]]}
              (auto-bucket-mbql
@@ -129,16 +128,16 @@
 (deftest do-not-auto-bucket-time-fields-test
   (testing (str "we also should not auto-bucket Fields that are `:type/Time`, because grouping a Time Field by day "
                 "makes ZERO SENSE.")
-    (mt/with-temp Field [field {:base_type :type/Time, :special_type nil}]
+    (mt/with-temp Field [field {:base_type :type/Time, :semantic_type nil}]
       (is (= {:source-table 1
               :breakout     [[:field-id (u/get-id field)]]}
              (auto-bucket-mbql
               {:source-table 1
                :breakout     [[:field-id (u/get-id field)]]}))))))
 
-(deftest auto-bucket-by-special-type-test
-  (testing "should be considered to be :type/DateTime based on `special_type` as well"
-    (mt/with-temp Field [field {:base_type :type/Integer, :special_type :type/DateTime}]
+(deftest auto-bucket-by-semantic-type-test
+  (testing "should be considered to be :type/DateTime based on `semantic_type` as well"
+    (mt/with-temp Field [field {:base_type :type/Integer, :semantic_type :type/DateTime}]
       (is (= {:source-table 1
               :breakout     [[:datetime-field [:field-id (u/get-id field)] :day]]}
              (auto-bucket-mbql
@@ -159,7 +158,7 @@
 
 (deftest ignore-non-temporal-breakouts-test
   (testing "does a breakout Field that isn't temporal pass thru unchnaged?"
-    (mt/with-temp Field [field {:base_type :type/Integer, :special_type nil}]
+    (mt/with-temp Field [field {:base_type :type/Integer, :semantic_type nil}]
       (is (= {:source-table 1
               :breakout     [[:field-id (u/get-id field)]]}
              (auto-bucket-mbql
@@ -168,7 +167,7 @@
 
 (deftest do-not-auto-bucket-already-bucketed-test
   (testing "does a :type/DateTime breakout Field that is already bucketed pass thru unchanged?"
-    (mt/with-temp Field [field {:base_type :type/DateTime, :special_type nil}]
+    (mt/with-temp Field [field {:base_type :type/DateTime, :semantic_type nil}]
       (is (= {:source-table 1
               :breakout     [[:datetime-field [:field-id (u/get-id field)] :month]]}
              (auto-bucket-mbql

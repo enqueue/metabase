@@ -34,7 +34,6 @@ import { columnSettings } from "metabase/visualizations/lib/settings/column";
 import _ from "underscore";
 import cx from "classnames";
 
-import RetinaImage from "react-retina-image";
 import { getIn } from "icepick";
 
 import type { DatasetData } from "metabase-types/types/Dataset";
@@ -249,19 +248,19 @@ export default class Table extends Component {
       const options: { name: string, value: null | string }[] = [
         { name: t`Off`, value: null },
       ];
-      if (!column.special_type || isURL(column)) {
+      if (!column.semantic_type || isURL(column)) {
         defaultValue = "link";
         options.push({ name: t`Link`, value: "link" });
       }
-      if (!column.special_type || isEmail(column)) {
+      if (!column.semantic_type || isEmail(column)) {
         defaultValue = "email_link";
         options.push({ name: t`Email link`, value: "email_link" });
       }
-      if (!column.special_type || isImageURL(column) || isAvatarURL(column)) {
+      if (!column.semantic_type || isImageURL(column) || isAvatarURL(column)) {
         defaultValue = isAvatarURL(column) ? "image" : "link";
         options.push({ name: t`Image`, value: "image" });
       }
-      if (!column.special_type) {
+      if (!column.semantic_type) {
         defaultValue = "auto";
         options.push({ name: t`Automatic`, value: "auto" });
       }
@@ -403,10 +402,13 @@ export default class Table extends Component {
             { "text-slate-light": isDashboard, "text-slate": !isDashboard },
           )}
         >
-          <RetinaImage
+          <img
             width={99}
             src="app/assets/img/hidden-field.png"
-            forceOriginalDimensions={false}
+            srcSet="
+              app/assets/img/hidden-field.png     1x,
+              app/assets/img/hidden-field@2x.png  2x
+            "
             className="mb2"
           />
           <span className="h4 text-bold">Every field is hidden right now</span>
@@ -426,17 +428,3 @@ export default class Table extends Component {
     }
   }
 }
-
-/**
- * A modified version of TestPopover for Jest/Enzyme tests.
- * It always uses TableSimple which Enzyme is able to render correctly.
- * TableInteractive uses react-virtualized library which requires a real browser viewport.
- */
-export const TestTable = (props: Props) => (
-  <Table {...props} isDashboard={true} />
-);
-TestTable.uiName = Table.uiName;
-TestTable.identifier = Table.identifier;
-TestTable.iconName = Table.iconName;
-TestTable.minSize = Table.minSize;
-TestTable.settings = Table.settings;

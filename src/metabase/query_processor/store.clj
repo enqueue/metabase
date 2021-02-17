@@ -12,14 +12,12 @@
    Of course, it would be entirely possible to call `(Field 10)` every time you needed information about that Field,
   but fetching all Fields in a single pass and storing them for reuse is dramatically more efficient than fetching
   those Fields potentially dozens of times in a single query execution."
-  (:require [metabase.models
-             [database :refer [Database]]
-             [field :refer [Field]]
-             [table :refer [Table]]]
+  (:require [metabase.models.database :refer [Database]]
+            [metabase.models.field :refer [Field]]
+            [metabase.models.table :refer [Table]]
             [metabase.util :as u]
-            [metabase.util
-             [i18n :refer [tru]]
-             [schema :as su]]
+            [metabase.util.i18n :refer [tru]]
+            [metabase.util.schema :as su]
             [schema.core :as s]
             [toucan.db :as db]))
 
@@ -95,23 +93,23 @@
    :id
    :name
    :parent_id
+   :semantic_type
    :settings
-   :special_type
    :table_id
    :visibility_type])
 
 (def ^:private FieldInstanceWithRequiredStorekeys
   (s/both
    (class Field)
-   {:name          su/NonBlankString
-    :display_name  su/NonBlankString
-    :description   (s/maybe s/Str)
-    :database_type su/NonBlankString
-    :base_type     su/FieldType
-    :special_type  (s/maybe su/FieldType)
-    :fingerprint   (s/maybe su/Map)
-    :parent_id     (s/maybe su/IntGreaterThanZero)
-    s/Any          s/Any}))
+   {:name              su/NonBlankString
+    :display_name      su/NonBlankString
+    :description       (s/maybe s/Str)
+    :database_type     su/NonBlankString
+    :base_type         su/FieldType
+    :semantic_type     (s/maybe su/FieldType)
+    :fingerprint       (s/maybe su/Map)
+    :parent_id         (s/maybe su/IntGreaterThanZero)
+    s/Any              s/Any}))
 
 
 ;;; ------------------------------------------ Saving objects in the Store -------------------------------------------

@@ -3,42 +3,35 @@
    heuristics."
   (:require [buddy.core.codecs :as codecs]
             [cheshire.core :as json]
-            [clojure
-             [string :as str]
-             [walk :as walk]]
             [clojure.math.combinatorics :as combo]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [clojure.walk :as walk]
             [java-time :as t]
-            [kixi.stats
-             [core :as stats]
-             [math :as math]]
+            [kixi.stats.core :as stats]
+            [kixi.stats.math :as math]
             [medley.core :as m]
-            [metabase
-             [driver :as driver]
-             [related :as related]
-             [util :as u]]
-            [metabase.automagic-dashboards
-             [filters :as filters]
-             [populate :as populate]
-             [rules :as rules]
-             [visualization-macros :as visualization]]
-            [metabase.mbql
-             [normalize :as normalize]
-             [util :as mbql.u]]
-            [metabase.models
-             [card :as card :refer [Card]]
-             [database :refer [Database]]
-             [field :as field :refer [Field]]
-             [interface :as mi]
-             [metric :as metric :refer [Metric]]
-             [query :refer [Query]]
-             [segment :refer [Segment]]
-             [table :refer [Table]]]
+            [metabase.automagic-dashboards.filters :as filters]
+            [metabase.automagic-dashboards.populate :as populate]
+            [metabase.automagic-dashboards.rules :as rules]
+            [metabase.automagic-dashboards.visualization-macros :as visualization]
+            [metabase.driver :as driver]
+            [metabase.mbql.normalize :as normalize]
+            [metabase.mbql.util :as mbql.u]
+            [metabase.models.card :as card :refer [Card]]
+            [metabase.models.database :refer [Database]]
+            [metabase.models.field :as field :refer [Field]]
+            [metabase.models.interface :as mi]
+            [metabase.models.metric :as metric :refer [Metric]]
+            [metabase.models.query :refer [Query]]
+            [metabase.models.segment :refer [Segment]]
+            [metabase.models.table :refer [Table]]
             [metabase.query-processor.util :as qp.util]
+            [metabase.related :as related]
             [metabase.sync.analyze.classify :as classify]
-            [metabase.util
-             [date-2 :as u.date]
-             [i18n :as ui18n :refer [deferred-tru trs tru]]]
+            [metabase.util :as u]
+            [metabase.util.date-2 :as u.date]
+            [metabase.util.i18n :as ui18n :refer [deferred-tru trs tru]]
             [ring.util.codec :as codec]
             [schema.core :as s]
             [toucan.db :as db]))
@@ -62,7 +55,7 @@
                             (m/find-first (comp #{id-or-name} :name)))]
         (-> field
             (update :base_type keyword)
-            (update :special_type keyword)
+            (update :semantic_type keyword)
             field/map->FieldInstance
             (classify/run-classifiers {}))))))
 
@@ -352,15 +345,15 @@
       form))
 
 (defn- field-isa?
-  [{:keys [base_type special_type]} t]
-  (or (isa? (keyword special_type) t)
+  [{:keys [base_type semantic_type]} t]
+  (or (isa? (keyword semantic_type) t)
       (isa? (keyword base_type) t)))
 
 (defn- key-col?
   "Workaround for our leaky type system which conflates types with properties."
-  [{:keys [base_type special_type name]}]
+  [{:keys [base_type semantic_type name]}]
   (and (isa? base_type :type/Number)
-       (or (#{:type/PK :type/FK} special_type)
+       (or (#{:type/PK :type/FK} semantic_type)
            (let [name (str/lower-case name)]
              (or (= name "id")
                  (str/starts-with? name "id_")
@@ -371,11 +364,11 @@
                       (if (and (string? fieldspec)
                                (rules/ga-dimension? fieldspec))
                         (comp #{fieldspec} :name)
-                        (fn [{:keys [special_type target] :as field}]
+                        (fn [{:keys [semantic_type target] :as field}]
                           (cond
                             ;; This case is mostly relevant for native queries
                             (#{:type/PK :type/FK} fieldspec)
-                            (isa? special_type fieldspec)
+                            (isa? semantic_type fieldspec)
 
                             target
                             (recur target)
@@ -752,7 +745,7 @@
                              (map (fn [field]
                                     (-> field
                                         (update :base_type keyword)
-                                        (update :special_type keyword)
+                                        (update :semantic_type keyword)
                                         field/map->FieldInstance
                                         (classify/run-classifiers {})
                                         (assoc :engine engine))))
@@ -1234,8 +1227,8 @@
                                         :from     [Field]
                                         :where    [:and [:in :table_id candidates]
                                                    [:= :active true]
-                                                   [:or [:not= :special_type "type/PK"]
-                                                    [:= :special_type nil]]]
+                                                   [:or [:not= :semantic_type "type/PK"]
+                                                    [:= :semantic_type nil]]]
                                         :group-by [:table_id]
                                         :having   [:= :%count.* 1]}))
                            (into #{} (map :table_id)))
@@ -1245,7 +1238,7 @@
                                         :from     [Field]
                                         :where    [:and [:in :table_id (keys field-count)]
                                                    [:= :active true]
-                                                   [:in :special_type ["type/PK" "type/FK"]]]
+                                                   [:in :semantic_type ["type/PK" "type/FK"]]]
                                         :group-by [:table_id]})
                              (filter (fn [{:keys [table_id count]}]
                                        (= count (field-count table_id))))

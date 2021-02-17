@@ -838,13 +838,18 @@ export const updateQuestion = (
     // We have special logic when going to, coming from, or updating a pivot table.
     const isPivot = newQuestion.display() === "pivot";
     const wasPivot = oldQuestion.display() === "pivot";
+    const queryHasBreakouts =
+      isPivot &&
+      newQuestion.isStructured() &&
+      newQuestion.query().breakouts().length > 0;
 
-    if (isPivot && !wasPivot) {
+    // we can only pivot queries with breakouts
+    if (isPivot && queryHasBreakouts) {
       // compute the pivot setting now so we can query the appropriate data
       const series = assocIn(
         getRawSeries(getState()),
-        [0, "card", "display"],
-        "pivot",
+        [0, "card"],
+        newQuestion.card(),
       );
       const key = "pivot_table.column_split";
       const setting = getQuestionWithDefaultVisualizationSettings(
@@ -856,14 +861,16 @@ export const updateQuestion = (
 
     if (
       // switching to pivot
-      (isPivot && !wasPivot) ||
+      (isPivot && !wasPivot && queryHasBreakouts) ||
       // switching away from pivot
       (!isPivot && wasPivot) ||
       // updating the pivot rows/cols
-      !_.isEqual(
-        newQuestion.setting("pivot_table.column_split"),
-        oldQuestion.setting("pivot_table.column_split"),
-      )
+      (isPivot &&
+        queryHasBreakouts &&
+        !_.isEqual(
+          newQuestion.setting("pivot_table.column_split"),
+          oldQuestion.setting("pivot_table.column_split"),
+        ))
     ) {
       run = true; // force a run when switching to/from pivot or updating it's setting
     }
@@ -1086,7 +1093,6 @@ export const queryCompleted = (question, queryResults) => {
     const dirty =
       !originalQuestion ||
       (originalQuestion && question.isDirtyComparedTo(originalQuestion));
-    console.log({ data, originalQuestion, dirty, question });
     if (dirty) {
       // Only update the display if the question is new or has been changed.
       // Otherwise, trust that the question was saved with the correct display.
@@ -1166,7 +1172,7 @@ export const followForeignKey = createThunkAction(FOLLOW_FOREIGN_KEY, fk => {
     // extract the value we will use to filter our new query
     let originValue;
     for (let i = 0; i < queryResult.data.cols.length; i++) {
-      if (isPK(queryResult.data.cols[i].special_type)) {
+      if (isPK(queryResult.data.cols[i].semantic_type)) {
         originValue = queryResult.data.rows[0][i];
       }
     }
@@ -1202,7 +1208,7 @@ export const loadObjectDetailFKReferences = createThunkAction(
       function getObjectDetailIdValue(data) {
         for (let i = 0; i < data.cols.length; i++) {
           const coldef = data.cols[i];
-          if (isPK(coldef.special_type)) {
+          if (isPK(coldef.semantic_type)) {
             return data.rows[0][i];
           }
         }

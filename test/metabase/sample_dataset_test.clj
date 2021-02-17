@@ -1,17 +1,14 @@
 (ns metabase.sample-dataset-test
   "Tests to make sure the Sample Dataset syncs the way we would expect."
   (:require [expectations :refer :all]
-            [metabase
-             [sample-data :as sample-data]
-             [sync :as sync]
-             [util :as u]]
-            [metabase.models
-             [database :refer [Database]]
-             [field :refer [Field]]
-             [table :refer [Table]]]
-            [toucan
-             [db :as db]
-             [hydrate :refer [hydrate]]]
+            [metabase.models.database :refer [Database]]
+            [metabase.models.field :refer [Field]]
+            [metabase.models.table :refer [Table]]
+            [metabase.sample-data :as sample-data]
+            [metabase.sync :as sync]
+            [metabase.util :as u]
+            [toucan.db :as db]
+            [toucan.hydrate :refer [hydrate]]
             [toucan.util.test :as tt]))
 
 ;;; ---------------------------------------------------- Tooling -----------------------------------------------------
@@ -50,7 +47,7 @@
 (expect
   {:description      "The name of the user who owns an account"
    :database_type    "VARCHAR"
-   :special_type     :type/Name
+   :semantic_type    :type/Name
    :name             "NAME"
    :has_field_values :search
    :active           true
@@ -71,5 +68,5 @@
         ;; setting anything else is reserved for admins, however we fill in what we think should be the appropiate value
         ;; with the hydration fn
         (hydrate :has_field_values)
-        (select-keys [:name :description :database_type :special_type :has_field_values :active :visibility_type
+        (select-keys [:name :description :database_type :semantic_type :has_field_values :active :visibility_type
                       :preview_display :display_name :fingerprint :base_type]))))

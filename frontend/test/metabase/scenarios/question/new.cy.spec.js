@@ -114,13 +114,13 @@ describe("scenarios > question > new", () => {
     });
 
     it.skip("should correctly choose between 'Object Detail' and 'Table (metabase#13717)", () => {
-      // set ID to `No special type`
+      // set ID to `No semantic type`
       cy.request("PUT", `/api/field/${ORDERS.ID}`, {
-        special_type: null,
+        semantic_type: null,
       });
       // set Quantity to `Entity Key`
       cy.request("PUT", `/api/field/${ORDERS.QUANTITY}`, {
-        special_type: "type/PK",
+        semantic_type: "type/PK",
       });
 
       openOrdersTable();
@@ -141,7 +141,7 @@ describe("scenarios > question > new", () => {
       cy.findByText("Fantastic Wool Shirt"); // order ID#3 with the same quantity
     });
 
-    it.skip("should display date granularity on Summarize when opened from saved question (metabase#11439)", () => {
+    it("should display date granularity on Summarize when opened from saved question (metabase#11439)", () => {
       // save "Orders" as question
       cy.request("POST", "/api/card", {
         name: "11439",
@@ -177,6 +177,37 @@ describe("scenarios > question > new", () => {
       // this step is maybe redundant since it fails to even find "by month"
       cy.findByText("Hour of day");
     });
+
+    it.skip("should display timeseries filter and granularity widgets at the bottom of the screen (metabase#11183)", () => {
+      cy.request("POST", "/api/card", {
+        name: "11183",
+        dataset_query: {
+          database: 1,
+          query: {
+            "source-table": ORDERS_ID,
+            aggregation: [["sum", ["field-id", ORDERS.SUBTOTAL]]],
+            breakout: [
+              ["datetime-field", ["field-id", ORDERS.CREATED_AT], "month"],
+            ],
+          },
+          type: "query",
+        },
+        display: "line",
+        visualization_settings: {},
+      }).then(({ body: { id: QUESTION_ID } }) => {
+        cy.server();
+        cy.route("POST", `/api/card/${QUESTION_ID}/query`).as("cardQuery");
+
+        cy.visit(`/question/${QUESTION_ID}`);
+      });
+
+      cy.wait("@cardQuery");
+      cy.log("**Reported missing in v0.33.1**");
+      cy.get(".AdminSelect")
+        .as("select")
+        .contains(/All Time/i);
+      cy.get("@select").contains(/Month/i);
+    });
   });
 
   describe("ask a (custom) question", () => {
@@ -202,7 +233,7 @@ describe("scenarios > question > new", () => {
         cy.findByText("Done").click();
       });
       cy.findByText("Visualize").click();
-      cy.findByText("604.96");
+      cy.findByText("318.7");
     });
 
     it.skip("should keep manually entered parenthesis intact (metabase#13306)", () => {
@@ -239,7 +270,7 @@ describe("scenarios > question > new", () => {
       cy.log(
         "**The point of failure for ANY non-numeric value reported in v0.36.4**",
       );
-      // the default type for "Reviewer" is "No special type"
+      // the default type for "Reviewer" is "No semantic type"
       cy.findByText("Fields")
         .parent()
         .contains("Reviewer");

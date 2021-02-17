@@ -1,17 +1,15 @@
 (ns metabase-enterprise.sandbox.test-util
   "Shared test utilities for multi-tenant tests."
   (:require [metabase-enterprise.sandbox.models.group-table-access-policy :refer [GroupTableAccessPolicy]]
-            [metabase.models
-             [card :refer [Card]]
-             [permissions :as perms]
-             [permissions-group :as perms-group :refer [PermissionsGroup]]
-             [permissions-group-membership :refer [PermissionsGroupMembership]]
-             [table :refer [Table]]
-             [user :refer [User]]]
-            [metabase.test
-             [data :as data]
-             [util :as tu]]
+            [metabase.models.card :refer [Card]]
+            [metabase.models.permissions :as perms]
+            [metabase.models.permissions-group :as perms-group :refer [PermissionsGroup]]
+            [metabase.models.permissions-group-membership :refer [PermissionsGroupMembership]]
+            [metabase.models.table :refer [Table]]
+            [metabase.models.user :refer [User]]
+            [metabase.test.data :as data]
             [metabase.test.data.users :as users]
+            [metabase.test.util :as tu]
             [metabase.util :as u]
             [schema.core :as s]
             [toucan.util.test :as tt]))
@@ -28,7 +26,7 @@
 
 (defn do-with-group [group f]
   (tt/with-temp* [PermissionsGroup           [group group]
-                  PermissionsGroupMembership [_     {:group_id (u/get-id group)
+                  PermissionsGroupMembership [_     {:group_id (u/the-id group)
                                                      :user_id  (users/user->id :rasta)}]]
     (f group)))
 
@@ -51,7 +49,7 @@
                            (f nil)))]
       (do-with-card
        (fn [card-id]
-         (tt/with-temp GroupTableAccessPolicy [gtap {:group_id             (u/get-id group)
+         (tt/with-temp GroupTableAccessPolicy [gtap {:group_id             (u/the-id group)
                                                      :table_id             (data/id table-kw)
                                                      :card_id              card-id
                                                      :attribute_remappings remappings}]
@@ -130,11 +128,11 @@
       (tt/with-temp* [Card                       [card  {:name          "magic"
                                                          :dataset_query (make-query-fn (data/id))}]
                       PermissionsGroup           [group {:name "Restricted Venues"}]
-                      PermissionsGroupMembership [_     {:group_id (u/get-id group)
+                      PermissionsGroupMembership [_     {:group_id (u/the-id group)
                                                          :user_id  (users/user->id :rasta)}]
-                      GroupTableAccessPolicy     [gtap  {:group_id             (u/get-id group)
+                      GroupTableAccessPolicy     [gtap  {:group_id             (u/the-id group)
                                                          :table_id             (data/id :venues)
-                                                         :card_id              (u/get-id card)
+                                                         :card_id              (u/the-id card)
                                                          :attribute_remappings attr-remappings}]]
         (add-segmented-perms-for-venues-for-all-users-group! (data/db))
         (f)))))

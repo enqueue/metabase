@@ -1,15 +1,14 @@
 (ns metabase.util
   "Common utility functions useful throughout the codebase."
-  (:require [clojure
-             [data :as data]
-             [pprint :refer [pprint]]
-             [set :as set]
-             [string :as str]
-             [walk :as walk]]
+  (:require [clojure.data :as data]
             [clojure.java.classpath :as classpath]
             [clojure.math.numeric-tower :as math]
+            [clojure.pprint :refer [pprint]]
+            [clojure.set :as set]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.tools.namespace.find :as ns-find]
+            [clojure.walk :as walk]
             [colorize.core :as colorize]
             [flatland.ordered.map :refer [ordered-map]]
             [medley.core :as m]
@@ -489,9 +488,7 @@
     (map? object-or-id)     (recur (:id object-or-id))
     (integer? object-or-id) object-or-id))
 
-;; TODO - now that I think about this, I think this should be called `the-id` instead, because the idea is similar to
-;; `clojure.core/the-ns`
-(defn get-id
+(defn the-id
   "If passed an integer ID, returns it. If passed a map containing an `:id` key, returns the value if it is an integer.
   Otherwise, throws an Exception.
 
@@ -501,6 +498,10 @@
   ^Integer [object-or-id]
   (or (id object-or-id)
       (throw (Exception. (tru "Not something with an ID: {0}" object-or-id)))))
+
+(def ^:deprecated ^Integer ^{:arglists '([object-or-id])} get-id
+  "DEPRECATED: Use `the-id` instead, which does the same thing, but has a clearer name."
+  the-id)
 
 ;; This is made `^:const` so it will get calculated when the uberjar is compiled. `find-namespaces` won't work if
 ;; source is excluded; either way this takes a few seconds, so doing it at compile time speeds up launch as well.
@@ -794,18 +795,45 @@
   ^String [seconds]
   (format-milliseconds (* 1000.0 seconds)))
 
+(def ^:dynamic *profile-level*
+  "Impl for `profile` macro -- don't use this directly. Nesting-level for the `profile` macro e.g. 0 for a top-level
+  `profile` form or 1 for a form inside that."
+  0)
+
+(defn profile-print-time
+  "Impl for `profile` macro -- don't use this directly. Prints the `___ took ___` message at the conclusion of a
+  `profile`d form."
+  [message start-time]
+  ;; indent the message according to `*profile-level*` and add a little down-left arrow so it (hopefully) points to
+  ;; the parent form
+  (println (format-color :green "%s%s took %s"
+             (if (pos? *profile-level*)
+               (str (str/join (repeat (dec *profile-level*) "  ")) " ↙ ")
+               "")
+             message
+             (format-nanoseconds (- (System/nanoTime) start-time)))))
+
 (defmacro profile
-  "Like `clojure.core/time`, but lets you specify a `message` that gets printed with the total time, and formats the
-  time nicely using `format-nanoseconds`."
+  "Like `clojure.core/time`, but lets you specify a `message` that gets printed with the total time, formats the
+  time nicely using `format-nanoseconds`, and indents nested calls to `profile`.
+
+    (profile \"top-level\"
+      (Thread/sleep 500)
+      (profile \"nested\"
+        (Thread/sleep 100)))
+    ;; ->
+     ↙ nested took 100.1 ms
+    top-level took 602.8 ms"
   {:style/indent 1}
   ([form]
    `(profile ~(str form) ~form))
   ([message & body]
-   `(let [start-time# (System/nanoTime)]
-      (prog1 (do ~@body)
-        (println (format-color '~'green "%s took %s"
-                   ~message
-                   (format-nanoseconds (- (System/nanoTime) start-time#))))))))
+   `(let [message#    ~message
+          start-time# (System/nanoTime)
+          result#     (binding [*profile-level* (inc *profile-level*)]
+                        ~@body)]
+      (profile-print-time message# start-time#)
+      result#)))
 
 (defn seconds->ms
   "Convert `seconds` to milliseconds. More readable than doing this math inline."
@@ -851,3 +879,14 @@
        [#","                  "."]
        ;; move minus sign at end to front
        [#"(^[^-]+)-$"         "-$1"]]))))
+
+(defmacro or-with
+  "Like or, but determines truthiness with `pred`."
+  ([pred]
+   nil)
+  ([pred x & more]
+   `(let [pred# ~pred
+          x#    ~x]
+      (if (pred# x#)
+        x#
+        (or-with pred# ~@more)))))

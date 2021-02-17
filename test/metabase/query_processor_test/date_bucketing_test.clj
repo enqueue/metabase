@@ -14,20 +14,18 @@
 
   If a report timezone is specified and the database supports it, the JVM timezone should have no impact on queries or
   their results."
-  (:require [clj-time
-             [core :as time]
-             [format :as tformat]]
+  (:require [clj-time.core :as time]
+            [clj-time.format :as tformat]
             [clojure.test :refer :all]
             [java-time :as t]
-            [metabase
-             [driver :as driver]
-             [query-processor :as qp]
-             [query-processor-test :as qp.test]
-             [test :as mt]
-             [util :as u]]
+            [metabase.driver :as driver]
             [metabase.driver.sql.query-processor :as sql.qp]
             [metabase.models.database :refer [Database]]
+            [metabase.query-processor :as qp]
+            [metabase.query-processor-test :as qp.test]
             [metabase.query-processor.middleware.format-rows :as format-rows]
+            [metabase.test :as mt]
+            [metabase.util :as u]
             [metabase.util.date-2 :as u.date]
             [potemkin.types :as p.types]
             [pretty.core :as pretty]
@@ -845,8 +843,11 @@
               ;; generating Java classes here so they'll be in the DB's native timezone. Some DBs refuse to use
               ;; the same timezone we're running the tests from *cough* SQL Server *cough*
               [(u/prog1 (if (and (isa? driver/hierarchy driver/*driver* :sql)
-                                 ;; BigQuery doesn't insert rows using SQL statements
-                                 (not= driver/*driver* :bigquery))
+                                 ;; BigQuery/Vertica don't insert rows using SQL statements
+                                 ;;
+                                 ;; TODO -- make 'insert-rows-using-statements?` a multimethod so we don't need to
+                                 ;; hardcode the whitelist here.
+                                 (not (#{:vertica :bigquery} driver/*driver*)))
                           (sql.qp/add-interval-honeysql-form driver/*driver*
                                                              (sql.qp/current-datetime-honeysql-form driver/*driver*)
                                                              (* i interval-seconds)
@@ -867,7 +868,7 @@
 
 (def ^:private ^:dynamic *recreate-db-if-stale?* true)
 
-(defn- count-of-grouping [^TimestampDatasetDef dataset, field-grouping & relative-datetime-args]
+(defn- count-of-grouping [^TimestampDatasetDef dataset field-grouping & relative-datetime-args]
   (-> (mt/dataset dataset
         ;; DB has values in the range of now() - (interval-seconds * 15) and now() + (interval-seconds * 15). So if it
         ;; was created more than (interval-seconds * 5) seconds ago, delete the Database and recreate it to make sure

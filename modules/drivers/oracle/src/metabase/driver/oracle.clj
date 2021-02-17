@@ -3,26 +3,24 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [honeysql.core :as hsql]
+            [honeysql.format :as hformat]
             [java-time :as t]
             [metabase.driver :as driver]
-            [metabase.driver
-             [common :as driver.common]
-             [sql :as sql]]
-            [metabase.driver.sql
-             [query-processor :as sql.qp]
-             [util :as sql.u]]
-            [metabase.driver.sql-jdbc
-             [connection :as sql-jdbc.conn]
-             [execute :as sql-jdbc.execute]
-             [sync :as sql-jdbc.sync]]
+            [metabase.driver.common :as driver.common]
+            [metabase.driver.sql :as sql]
+            [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
+            [metabase.driver.sql-jdbc.execute :as sql-jdbc.execute]
+            [metabase.driver.sql-jdbc.sync :as sql-jdbc.sync]
+            [metabase.driver.sql.query-processor :as sql.qp]
+            [metabase.driver.sql.util :as sql.u]
             [metabase.driver.sql.util.unprepare :as unprepare]
-            [metabase.util
-             [honeysql-extensions :as hx]
-             [i18n :refer [trs]]
-             [ssh :as ssh]])
+            [metabase.util.honeysql-extensions :as hx]
+            [metabase.util.i18n :refer [trs]]
+            [metabase.util.ssh :as ssh])
   (:import com.mchange.v2.c3p0.C3P0ProxyConnection
            [java.sql Connection ResultSet Types]
            [java.time Instant OffsetDateTime ZonedDateTime]
+           metabase.util.honeysql_extensions.Identifier
            [oracle.jdbc OracleConnection OracleTypes]
            oracle.sql.TIMESTAMPTZ))
 
@@ -131,6 +129,30 @@
 (defn- num-to-ds-interval [unit v] (hsql/call :numtodsinterval v (hx/literal unit)))
 (defn- num-to-ym-interval [unit v] (hsql/call :numtoyminterval v (hx/literal unit)))
 
+(def ^:private legacy-max-identifier-length
+  "Maximal identifier length for Oracle < 12.2"
+  30)
+
+(defn- truncate-identifier
+  [identifier]
+  (->> identifier
+       hash
+       str
+       (map (fn [digit]
+              (-> digit
+                  int
+                  (+ 65)
+                  char)))
+       (apply str "identifier_")))
+
+(defmethod sql.qp/->honeysql [:oracle Identifier]
+  [_ identifier]
+  (let [field-identifier (last (:components identifier))]
+    (if (> (count field-identifier) legacy-max-identifier-length)
+      (update identifier :components (fn [components]
+                                       (concat (butlast components)
+                                               [(truncate-identifier field-identifier)])))
+      identifier)))
 
 (defmethod sql.qp/->honeysql [:oracle :substring]
   [driver [_ arg start length]]
@@ -168,11 +190,11 @@
         (num-to-ds-interval :second field-or-value)))
 
 (defmethod sql.qp/cast-temporal-string [:oracle :type/ISO8601DateTimeString]
-  [_driver _special_type expr]
+  [_driver _semantic_type expr]
   (hsql/call :to_timestamp expr "YYYY-MM-DD HH:mi:SS"))
 
 (defmethod sql.qp/cast-temporal-string [:oracle :type/ISO8601DateString]
-  [_driver _special_type expr]
+  [_driver _semantic_type expr]
   (hsql/call :to_date expr "YYYY-MM-DD"))
 
 (defmethod sql.qp/unix-timestamp->honeysql [:oracle :milliseconds]

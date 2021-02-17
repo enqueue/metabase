@@ -306,6 +306,7 @@ export default class StructuredQuery extends AtomicQuery {
           column =>
             new Field({
               ...column,
+              // TODO FIXME -- Do NOT use field-literal unless you're referring to a native query
               id: ["field-literal", column.name, column.base_type],
               source: "fields",
               // HACK: need to thread the query through to this fake Field
@@ -707,6 +708,9 @@ export default class StructuredQuery extends AtomicQuery {
    * @returns An array of MBQL @type {Breakout}s.
    */
   breakouts(): BreakoutWrapper[] {
+    if (this.query() == null) {
+      return [];
+    }
     return Q.getBreakouts(this.query()).map(
       (breakout, index) => new BreakoutWrapper(breakout, index, this),
     );
@@ -1251,7 +1255,7 @@ export default class StructuredQuery extends AtomicQuery {
         })
         .sortBy(d => d.field().name.toLowerCase())
         .sortBy(d => {
-          const type = d.field().special_type;
+          const type = d.field().semantic_type;
           return type === TYPE.PK ? 0 : type === TYPE.Name ? 1 : 2;
         })
         .sortBy(d => d.field().position)

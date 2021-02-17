@@ -9,8 +9,8 @@
 
   1. Human-readable values remapping where you go assign string values to things like enum integers
 
-  2. Implicit PK Field-> [Name] Field remapping. This happens automatically for any Field with `:type/PK` special type
-  that has another Field with `:type/Name` special type in the same Table. e.g. `venue.id` is automatically
+  2. Implicit PK Field-> [Name] Field remapping. This happens automatically for any Field with `:type/PK` semantic type
+  that has another Field with `:type/Name` semantic type in the same Table. e.g. `venue.id` is automatically
   remapped (displayed) as `venue.name`.
 
   3. Explicit FK Field->Field remapping. FK Fields can be manually remapped to a Field in the Table they point to.
@@ -64,25 +64,21 @@
   (:require [clojure.core.memoize :as memoize]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [honeysql
-             [core :as hsql]
-             [format :as hformat]]
-            [metabase
-             [db :as mdb]
-             [models :refer [Database Dimension Field FieldValues Table]]
-             [query-processor :as qp]
-             [types :as types]
-             [util :as u]]
+            [honeysql.core :as hsql]
+            [honeysql.format :as hformat]
+            [metabase.db.util :as mdb.u]
             [metabase.driver.common.parameters.dates :as params.dates]
             [metabase.mbql.util :as mbql.u]
-            [metabase.models
-             [field :as field]
-             [params :as params]
-             [table :as table]]
+            [metabase.models :refer [Database Dimension Field FieldValues Table]]
+            [metabase.models.field :as field]
+            [metabase.models.params :as params]
             [metabase.models.params.chain-filter.dedupe-joins :as dedupe]
-            [metabase.util
-             [i18n :refer [tru]]
-             [schema :as su]]
+            [metabase.models.table :as table]
+            [metabase.query-processor :as qp]
+            [metabase.types :as types]
+            [metabase.util :as u]
+            [metabase.util.i18n :refer [tru]]
+            [metabase.util.schema :as su]
             [schema.core :as s]
             [toucan.db :as db]))
 
@@ -104,7 +100,7 @@
   the DB too much since this is unlike to change often, if ever."
   (memoize/ttl
    (fn [field-id]
-     (types/temporal-field? (db/select-one [Field :base_type :special_type] :id field-id)))
+     (types/temporal-field? (db/select-one [Field :base_type :semantic_type] :id field-id)))
    :ttl/threshold (u/minutes->ms 10)))
 
 (defn- filter-clause
@@ -504,8 +500,8 @@
                                                                    [Field :dest] [:= :dest.table_id :table.id]]
                                                        :where     [:and
                                                                    [:= :source.id field-id]
-                                                                   (mdb/isa :source.special_type :type/PK)
-                                                                   (mdb/isa :dest.special_type :type/Name)]
+                                                                   (mdb.u/isa :source.semantic_type :type/PK)
+                                                                   (mdb.u/isa :dest.semantic_type :type/Name)]
                                                        :limit     1})]}
                                             :ids]]
                                   :limit  1})]

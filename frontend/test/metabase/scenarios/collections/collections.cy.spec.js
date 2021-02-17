@@ -3,9 +3,18 @@ import {
   signInAsAdmin,
   setupLocalHostEmail,
   signInAsNormalUser,
+  signIn,
+  signOut,
   modal,
+  popover,
+  USERS,
+  USER_GROUPS,
+  openOrdersTable,
 } from "__support__/cypress";
 // Ported from initial_collection.e2e.spec.js
+
+const { nocollection } = USERS;
+const { DATA_GROUP } = USER_GROUPS;
 
 // Z because the api lists them alphabetically by name, so it makes it easier to check
 const [admin, collection, sub_collection] = [
@@ -27,14 +36,15 @@ const pulse_name = "Test pulse";
 const dashboard_name = "Test Dashboard";
 
 describe("scenarios > collection_defaults", () => {
-  before(restore);
-
   describe("for admins", () => {
-    beforeEach(signInAsAdmin);
+    beforeEach(() => {
+      restore();
+      signInAsAdmin();
+    });
 
-    describe("a new collection", () => {
-      before(() => {
-        signInAsAdmin();
+    describe("new collections", () => {
+      beforeEach(() => {
+        cy.log("**--Create new collection--**");
         cy.request("POST", "/api/collection", {
           name: collection.name,
           color: "#ff9a9a",
@@ -57,53 +67,53 @@ describe("scenarios > collection_defaults", () => {
         cy.visit("/collection/root");
         cy.findByText(collection.name);
       });
-    });
 
-    describe("a new sub-collection", () => {
-      before(() => {
-        signInAsAdmin();
-        // Create a sub collection within previously added ("Z collection")
-        cy.request("POST", "/api/collection", {
-          name: sub_collection.name,
-          color: "#ff9a9a",
-          parent_id: collection.id,
-        }).then(({ body }) => {
-          sub_collection.id = body.id;
-        });
-      });
-
-      it("should be a sub collection", () => {
-        const LENGTH = sub_collection.id + 1;
-        cy.request("GET", "/api/collection").then(response => {
-          expect(response.body).to.have.length(LENGTH);
-          expect(response.body[sub_collection.id].name).to.equal(
-            sub_collection.name,
+      describe("a new sub-collection", () => {
+        beforeEach(() => {
+          cy.log(
+            "**--Create a sub collection within previously created collection--**",
           );
-          // Check that it has a parent (and that it is a "Z collection")
-          expect(response.body[sub_collection.id].location).to.equal(
-            `/${collection.id}/`,
-          );
+          cy.request("POST", "/api/collection", {
+            name: sub_collection.name,
+            color: "#ff9a9a",
+            parent_id: collection.id,
+          }).then(({ body }) => {
+            sub_collection.id = body.id;
+          });
         });
-      });
-
-      it("should be nested under parent on a parent's URL in a sidebar", () => {
-        cy.visit("/collection/root");
-        cy.findByText(sub_collection.name).should("not.exist");
-
-        cy.visit(`/collection/${collection.id}`);
-        cy.findByText(sub_collection.name);
-      });
-
-      it("should be moved under admin's personal collection", () => {
-        cy.request("PUT", `/api/collection/${sub_collection.id}`, {
-          parent_id: admin.id,
+        it("should be a sub collection", () => {
+          const LENGTH = sub_collection.id + 1;
+          cy.request("GET", "/api/collection").then(response => {
+            expect(response.body).to.have.length(LENGTH);
+            expect(response.body[sub_collection.id].name).to.equal(
+              sub_collection.name,
+            );
+            // Check that it has a parent (and that it is a "Z collection")
+            expect(response.body[sub_collection.id].location).to.equal(
+              `/${collection.id}/`,
+            );
+          });
         });
 
-        cy.visit(`/collection/${admin.id}`);
-        // this changed in 0.38
-        // It used to be "Robert Tableton's personal collection"
-        // but since we're logged in as admin, it's showing "Your personal collection"
-        cy.findByText(sub_collection.name);
+        it("should be nested under parent on a parent's URL in a sidebar", () => {
+          cy.visit("/collection/root");
+          cy.findByText(sub_collection.name).should("not.exist");
+
+          cy.visit(`/collection/${collection.id}`);
+          cy.findByText(sub_collection.name);
+        });
+
+        it("should be moved under admin's personal collection", () => {
+          cy.request("PUT", `/api/collection/${sub_collection.id}`, {
+            parent_id: admin.id,
+          });
+
+          cy.visit(`/collection/${admin.id}`);
+          // this changed in 0.38
+          // It used to be "Robert Tableton's personal collection"
+          // but since we're logged in as admin, it's showing "Your personal collection"
+          cy.findByText(sub_collection.name);
+        });
       });
     });
 
@@ -207,6 +217,23 @@ describe("scenarios > collection_defaults", () => {
         // 4. Consequently, "Everything else" should now also be visible
         cy.findByText("Everything else");
       });
+
+      it.skip("should let a user select all items using checkbox (metabase#14705)", () => {
+        cy.visit("/collection/root");
+        cy.findByText("Orders")
+          .closest("a")
+          .within(() => {
+            cy.get(".Icon-table").trigger("mouseover");
+            cy.findByRole("checkbox")
+              .should("be.visible")
+              .click();
+          });
+
+        cy.findByText("1 item selected").should("be.visible");
+        cy.get(".Icon-dash").click();
+        cy.get(".Icon-dash").should("not.exist");
+        cy.findByText("4 items selected");
+      });
     });
 
     // [quarantine]: cannot run tests that rely on email setup in CI (yet)
@@ -244,13 +271,14 @@ describe("scenarios > collection_defaults", () => {
   });
 
   describe("for users", () => {
-    before(restore);
-    beforeEach(signInAsNormalUser);
+    beforeEach(() => {
+      restore();
+      signInAsNormalUser();
+    });
 
     // [quarantine]: cannot run tests that rely on email setup in CI (yet)
     describe.skip("a new pulse", () => {
-      before(() => {
-        signInAsAdmin();
+      beforeEach(() => {
         cy.visit("/admin/settings/email");
         setupLocalHostEmail();
       });
@@ -274,6 +302,232 @@ describe("scenarios > collection_defaults", () => {
         cy.visit("/collection/root");
         cy.findByText(dashboard_name);
       });
+    });
+  });
+
+  describe("Collection related issues reproductions", () => {
+    beforeEach(() => {
+      restore();
+      signInAsAdmin();
+    });
+
+    describe("nested collections with revoked parent access", () => {
+      beforeEach(() => {
+        // Create Parent collection within `Our analytics`
+        cy.request("POST", "/api/collection", {
+          name: "Parent",
+          color: "#509EE3",
+          parent_id: null,
+        }).then(({ body: { id: PARENT_COLLECTION_ID } }) => {
+          // Create Child collection within Parent collection
+          cy.request("POST", "/api/collection", {
+            name: "Child",
+            color: "#509EE3",
+            parent_id: PARENT_COLLECTION_ID,
+          }).then(({ body: { id: CHILD_COLLECTION_ID } }) => {
+            // Fetch collection permission graph
+            cy.request("GET", "/api/collection/graph").then(
+              ({ body: { groups, revision } }) => {
+                // Give `Data` group permission to "curate" Child collection only
+                // Access to everything else is revoked by default - that's why we chose `Data` group
+                groups[DATA_GROUP][CHILD_COLLECTION_ID] = "write";
+
+                // We're chaining these 2 requestes in order to match shema (passing it from GET to PUT)
+                // Similar to what we did in `sandboxes.cy.spec.js` with the permission graph
+                cy.request("PUT", "/api/collection/graph", {
+                  // Pass previously mutated `groups` object
+                  groups,
+                  revision,
+                });
+              },
+            );
+          });
+        });
+
+        signOut();
+        signIn("nocollection");
+      });
+
+      it("should see a child collection in a sidebar even with revoked access to its parent (metabase#14114)", () => {
+        cy.visit("/");
+        cy.findByText("Child");
+        cy.findByText("Parent").should("not.exist");
+        cy.findByText("Browse all items").click();
+        cy.findByText("Child");
+        cy.findByText("Parent").should("not.exist");
+      });
+
+      it.skip("should be able to choose a child collection when saving a question (metabase#14052)", () => {
+        const { first_name, last_name } = nocollection;
+
+        openOrdersTable();
+        cy.findByText("Save").click();
+        // Click to choose which collection should this question be saved to
+        cy.findByText(
+          `${first_name} ${last_name}'s Personal Collection`,
+        ).click();
+        popover().within(() => {
+          cy.findByText(/Our analytics/i);
+          cy.findByText(/My personal collection/i);
+          cy.findByText("Parent").should("not.exist");
+          cy.log("**Reported failing from v0.34.3**");
+          cy.findByText("Child");
+        });
+      });
+    });
+
+    it.skip("sub-collection should be available in save and move modals (#14122)", () => {
+      const COLLECTION = "14122C";
+      // Create Parent collection within `Our analytics`
+      cy.request("POST", "/api/collection", {
+        name: COLLECTION,
+        color: "#509EE3",
+        parent_id: 1,
+      });
+      cy.visit("/collection/root");
+      cy.get("[class*=CollectionSidebar]").as("sidebar");
+
+      openDropdownFor("Your personal collection");
+      cy.findByText(COLLECTION);
+      cy.get("@sidebar")
+        .contains("Our analytics")
+        .click();
+
+      openEllipsisMenuFor("Orders");
+      cy.findByText("Move this item").click();
+
+      modal().within(() => {
+        cy.findByText("My personal collection")
+          .parent()
+          .find(".Icon-chevronright")
+          .click();
+
+        cy.findByText(COLLECTION).click();
+        cy.findByText("Move")
+          .closest(".Button")
+          .should("not.be.disabled")
+          .click();
+      });
+    });
+
+    it("should show moved collections inside a folder tree structure (metabase#14280)", () => {
+      const NEW_COLLECTION = "New collection";
+
+      // Create New collection within `Our analytics`
+      cy.request("POST", "/api/collection", {
+        name: NEW_COLLECTION,
+        color: "#509EE3",
+        parent_id: null,
+      });
+
+      cy.visit("/collection/root");
+      cy.findByText(NEW_COLLECTION);
+      cy.findByText("First collection").click();
+      cy.get(".Icon-pencil").click();
+      cy.findByText("Edit this collection").click();
+      modal().within(() => {
+        // Open the select dropdown menu
+        cy.findByText("Our analytics").click();
+      });
+      popover().within(() => {
+        cy.findByText(NEW_COLLECTION).click();
+      });
+      // Make sure the correct value is selected
+      cy.get(".AdminSelect-content").contains(NEW_COLLECTION);
+      cy.findByText("Update")
+        .closest(".Button")
+        .should("not.be.disabled")
+        .click();
+      // Make sure modal closed
+      cy.findByText("Update").should("not.exist");
+
+      // Make sure sidebar updated (waiting for a specific XHR didn't help)
+      // Before update, "First collection" was expanded, thus showing "Second collection"
+      cy.findByText("Second collection").should("not.exist");
+
+      cy.log(
+        "**New collection should immediately be open, showing nested children**",
+      );
+
+      openDropdownFor(NEW_COLLECTION);
+      cy.findAllByText("First collection");
+      cy.findAllByText("Second collection");
+
+      // TODO: This was an original test that made sure the collection is indeed open immediately.
+      //       That part is going to be addressed in a separate issue.
+      // cy.findByText(NEW_COLLECTION)
+      //   .closest("a")
+      //   .within(() => {
+      //     cy.get(".Icon-chevrondown");
+      //     cy.findByText("First collection");
+      //   });
+    });
+
+    it("should update UI when nested child collection is moved to the root collection (metabase#14482)", () => {
+      cy.visit("/collection/root");
+      cy.log("**Move 'Second collection' to the root");
+      openDropdownFor("First collection");
+      cy.findByText("Second collection").click();
+      cy.get(".Icon-pencil").click();
+      cy.findByText("Edit this collection").click();
+      modal().within(() => {
+        // Open the select dropdown menu
+        cy.findByText("First collection").click();
+      });
+      popover().within(() => {
+        cy.findAllByText("Our analytics")
+          .last()
+          .click();
+      });
+      // Make sure the correct value is selected
+      cy.get(".AdminSelect-content").contains("Our analytics");
+      cy.findByText("Update")
+        .closest(".Button")
+        .should("not.be.disabled")
+        .click();
+      // Make sure modal closed
+      cy.findByText("Update").should("not.exist");
+
+      // This click is a weird "hack" that simply gives time for an UI to update - nothing else worked (not even waiting for XHR)
+      cy.get(".Icon-info").click();
+
+      cy.get("[class*=CollectionSidebar]")
+        .as("sidebar")
+        .within(() => {
+          cy.findAllByText("Second collection").should("have.length", 1);
+          cy.findAllByText("Third collection").should("have.length", 1);
+        });
+    });
+
+    it.skip("should suggest questions saved in collections with colon in their name (metabase#14287)", () => {
+      cy.request("POST", "/api/collection", {
+        name: "foo:bar",
+        color: "#509EE3",
+        parent_id: null,
+      }).then(({ body: { id: COLLECTION_ID } }) => {
+        // Move question #1 ("Orders") to newly created collection
+        cy.request("PUT", "/api/card/1", {
+          collection_id: COLLECTION_ID,
+        });
+        // Sanity check: make sure Orders is indeed inside new collection
+        cy.visit(`/collection/${COLLECTION_ID}`);
+        cy.findByText("Orders");
+      });
+
+      cy.visit("/question/new");
+      cy.findByText("Simple question").click();
+      cy.findByText("Saved Questions").click();
+      // Note: collection name's first letter is capitalized
+      cy.findByText(/foo:bar/i).click();
+      cy.findByText("Orders");
+    });
+
+    it.skip("collections without sub-collections shouldn't have chevron icon (metabase#14753)", () => {
+      cy.visit("/collection/root");
+      cy.findByText("Your personal collection")
+        .parent()
+        .find(".Icon-chevronright")
+        .should("not.exist");
     });
   });
 });

@@ -1,25 +1,21 @@
 (ns metabase.driver.mysql-test
-  (:require [clojure
-             [string :as str]
-             [test :refer :all]]
-            [clojure.java.jdbc :as jdbc]
-            [metabase
-             [driver :as driver]
-             [query-processor :as qp]
-             [sync :as sync]
-             [test :as mt]
-             [util :as u]]
+  (:require [clojure.java.jdbc :as jdbc]
+            [clojure.string :as str]
+            [clojure.test :refer :all]
             [metabase.db.metadata-queries :as metadata-queries]
+            [metabase.driver :as driver]
             [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
-            [metabase.models
-             [database :refer [Database]]
-             [field :refer [Field]]
-             [table :refer [Table]]]
+            [metabase.models.database :refer [Database]]
+            [metabase.models.field :refer [Field]]
+            [metabase.models.table :refer [Table]]
+            [metabase.query-processor :as qp]
+            [metabase.sync :as sync]
             [metabase.sync.analyze.fingerprint :as fingerprint]
+            [metabase.test :as mt]
             [metabase.test.data.interface :as tx]
-            [toucan
-             [db :as db]
-             [hydrate :refer [hydrate]]]
+            [metabase.util :as u]
+            [toucan.db :as db]
+            [toucan.hydrate :refer [hydrate]]
             [toucan.util.test :as tt])
   (:import [java.time ZonedDateTime ZoneId]
            java.time.format.DateTimeFormatter))
@@ -64,16 +60,18 @@
       ["Empty Vending Machine" 0]]]])
 
 (defn- db->fields [db]
-  (let [table-ids (db/select-ids 'Table :db_id (u/get-id db))]
-    (set (map (partial into {}) (db/select [Field :name :base_type :special_type] :table_id [:in table-ids])))))
+  (let [table-ids (db/select-ids 'Table :db_id (u/the-id db))]
+    (set (map (partial into {}) (db/select [Field :name :base_type :semantic_type] :table_id [:in table-ids])))))
 
 (deftest tiny-int-1-test
   (mt/test-driver :mysql
     (mt/dataset tiny-int-ones
+      ;; trigger a full sync on this database so fields are categorized correctly
+      (sync/sync-database! (mt/db))
       (testing "By default TINYINT(1) should be a boolean"
-        (is (= #{{:name "number-of-cans", :base_type :type/Boolean, :special_type :type/Category}
-                 {:name "id", :base_type :type/Integer, :special_type :type/PK}
-                 {:name "thing", :base_type :type/Text, :special_type :type/Category}}
+        (is (= #{{:name "number-of-cans", :base_type :type/Boolean, :semantic_type :type/Category}
+                 {:name "id", :base_type :type/Integer, :semantic_type :type/PK}
+                 {:name "thing", :base_type :type/Text, :semantic_type :type/Category}}
                (db->fields (mt/db)))))
 
       (testing "if someone says specifies `tinyInt1isBit=false`, it should come back as a number instead"
@@ -81,9 +79,9 @@
                                     :details (assoc (:details (mt/db))
                                                     :additional-options "tinyInt1isBit=false")}]
           (sync/sync-database! db)
-          (is (= #{{:name "number-of-cans", :base_type :type/Integer, :special_type :type/Quantity}
-                   {:name "id", :base_type :type/Integer, :special_type :type/PK}
-                   {:name "thing", :base_type :type/Text, :special_type :type/Category}}
+          (is (= #{{:name "number-of-cans", :base_type :type/Integer, :semantic_type :type/Quantity}
+                   {:name "id", :base_type :type/Integer, :semantic_type :type/PK}
+                   {:name "thing", :base_type :type/Text, :semantic_type :type/Category}}
                  (db->fields db))))))))
 
 (tx/defdataset ^:private year-db
@@ -95,8 +93,8 @@
   (mt/test-driver :mysql
     (mt/dataset year-db
       (testing "By default YEAR"
-        (is (= #{{:name "year_column", :base_type :type/Date, :special_type nil}
-                 {:name "id", :base_type :type/Integer, :special_type :type/PK}}
+        (is (= #{{:name "year_column", :base_type :type/Date, :semantic_type nil}
+                 {:name "id", :base_type :type/Integer, :semantic_type :type/PK}}
                (db->fields (mt/db)))))
       (let [table  (db/select-one Table :db_id (u/id (mt/db)))
             fields (db/select Field :table_id (u/id table) :name "year_column")]

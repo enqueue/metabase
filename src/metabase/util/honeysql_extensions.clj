@@ -1,11 +1,9 @@
 (ns metabase.util.honeysql-extensions
   (:refer-clojure :exclude [+ - / * mod inc dec cast concat format])
-  (:require [clojure
-             [pprint :as pprint]
-             [string :as str]]
-            [honeysql
-             [core :as hsql]
-             [format :as hformat]]
+  (:require [clojure.pprint :as pprint]
+            [clojure.string :as str]
+            [honeysql.core :as hsql]
+            [honeysql.format :as hformat]
             [metabase.util :as u]
             [potemkin.types :as p.types]
             [pretty.core :as pretty :refer [PrettyPrintable]]
@@ -82,7 +80,7 @@
          (hformat/quote-identifier component, :split false)))))
   PrettyPrintable
   (pretty [_]
-    (cons 'identifier (cons identifier-type components))))
+    (cons 'hx/identifier (cons identifier-type components))))
 
 ;; don't use `->Identifier` or `map->Identifier`. Use the `identifier` function instead, which cleans up its input
 (alter-meta! #'->Identifier    assoc :private true)

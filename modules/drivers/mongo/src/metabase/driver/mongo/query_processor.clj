@@ -1,26 +1,22 @@
 (ns metabase.driver.mongo.query-processor
   "Logic for translating MBQL queries into Mongo Aggregation Pipeline queries. See
   https://docs.mongodb.com/manual/reference/operator/aggregation-pipeline/ for more details."
-  (:require [clojure
-             [string :as str]
-             [walk :as walk]]
+  (:require [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [clojure.walk :as walk]
             [flatland.ordered.map :as ordered-map]
             [java-time :as t]
             [metabase.driver.common :as driver.common]
-            [metabase.mbql
-             [schema :as mbql.s]
-             [util :as mbql.u]]
+            [metabase.mbql.schema :as mbql.s]
+            [metabase.mbql.util :as mbql.u]
             [metabase.models.field :refer [Field]]
-            [metabase.query-processor
-             [interface :as i]
-             [store :as qp.store]]
+            [metabase.query-processor.interface :as i]
             [metabase.query-processor.middleware.annotate :as annotate]
+            [metabase.query-processor.store :as qp.store]
             [metabase.util :as u]
-            [metabase.util
-             [date-2 :as u.date]
-             [i18n :as ui18n :refer [tru]]
-             [schema :as su]]
+            [metabase.util.date-2 :as u.date]
+            [metabase.util.i18n :as ui18n :refer [tru]]
+            [metabase.util.schema :as su]
             [monger.operators :refer :all]
             [schema.core :as s])
   (:import metabase.models.field.FieldInstance
@@ -128,17 +124,17 @@
   (field->name field "___"))
 
 (defmethod ->initial-rvalue (class Field)
-  [{special-type :special_type, :as field}]
+  [{semantic-type :semantic_type, :as field}]
   (let [field-name (str \$ (field->name field "."))]
     (cond
       ;; TIMEZONE FIXME — use `java.time` classes
-      (isa? (:special_type field) :type/UNIXTimestampMicroseconds)
+      (isa? (:semantic_type field) :type/UNIXTimestampMicroseconds)
       {$add [(java.util.Date. 0) {$divide [field-name 1000]}]}
 
-      (isa? (:special_type field) :type/UNIXTimestampMilliseconds)
+      (isa? (:semantic_type field) :type/UNIXTimestampMilliseconds)
       {$add [(java.util.Date. 0) field-name]}
 
-      (isa? (:special_type field) :type/UNIXTimestampSeconds)
+      (isa? (:semantic_type field) :type/UNIXTimestampSeconds)
       {$add [(java.util.Date. 0) {$multiply [field-name 1000]}]}
 
       :else field-name)))

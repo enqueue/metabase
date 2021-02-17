@@ -1,13 +1,12 @@
 (ns metabase.query-processor.middleware.annotate-test
   (:require [clojure.test :refer :all]
-            [metabase
-             [driver :as driver]
-             [models :refer [Field]]
-             [test :as mt]
-             [util :as u]]
+            [metabase.driver :as driver]
+            [metabase.models :refer [Field]]
+            [metabase.query-processor :as qp]
             [metabase.query-processor.middleware.annotate :as annotate]
             [metabase.query-processor.store :as qp.store]
-            [metabase.test.data :as data]
+            [metabase.test :as mt]
+            [metabase.util :as u]
             [toucan.db :as db]
             [toucan.util.test :as tt]))
 
@@ -92,7 +91,8 @@
                          {:display_name "Category → Name"
                           :source       :fields
                           :field_ref    $category_id->categories.name
-                          :fk_field_id  %category_id})]
+                          :fk_field_id  %category_id
+                          :source_alias "CATEGORIES__via__CATEGORY_ID"})]
                  (doall
                   (annotate/column-info
                    {:type  :query
@@ -109,7 +109,8 @@
           (is (= [(merge (info-for-field :categories :name)
                          {:display_name "Categories → Name"
                           :source       :fields
-                          :field_ref    &Categories.categories.name})]
+                          :field_ref    &Categories.categories.name
+                          :source_alias "Categories"})]
                  (doall
                   (annotate/column-info
                    {:type  :query
@@ -173,7 +174,7 @@
       (mt/with-everything-store
         (is (= {:description     nil
                 :table_id        (mt/id :venues)
-                :special_type    nil
+                :semantic_type   nil
                 :name            "parent.child"
                 :settings        nil
                 :field_ref       [:field-id (u/get-id child)]
@@ -192,7 +193,7 @@
       (mt/with-everything-store
         (is (= {:description     nil
                 :table_id        (mt/id :venues)
-                :special_type    nil
+                :semantic_type   nil
                 :name            "grandparent.parent.child"
                 :settings        nil
                 :field_ref       [:field-id (u/get-id child)]
@@ -207,22 +208,22 @@
 (deftest col-info-field-literals-test
   (testing "field literals should get the information from the matching `:source-metadata` if it was supplied"
     (mt/with-everything-store
-      (is (= {:name         "sum"
-              :display_name "sum of User ID"
-              :base_type    :type/Integer
-              :field_ref    [:field-literal "sum" :type/Integer]
-              :special_type :type/FK}
+      (is (= {:name          "sum"
+              :display_name  "sum of User ID"
+              :base_type     :type/Integer
+              :field_ref     [:field-literal "sum" :type/Integer]
+              :semantic_type :type/FK}
              (#'annotate/col-info-for-field-clause
               {:source-metadata
-               [{:name "abc", :display_name "another Field", :base_type :type/Integer, :special_type :type/FK}
-                {:name "sum", :display_name "sum of User ID", :base_type :type/Integer, :special_type :type/FK}]}
+               [{:name "abc", :display_name "another Field", :base_type :type/Integer, :semantic_type :type/FK}
+                {:name "sum", :display_name "sum of User ID", :base_type :type/Integer, :semantic_type :type/FK}]}
               [:field-literal "sum" :type/Integer]))))))
 
 (deftest col-info-expressions-test
   (mt/with-everything-store
     (testing "col info for an `expression` should work as expected"
       (is (= {:base_type       :type/Float
-              :special_type    :type/Number
+              :semantic_type   :type/Number
               :name            "double-price"
               :display_name    "double-price"
               :expression_name "double-price"
@@ -233,8 +234,11 @@
                 [:expression "double-price"])))))
 
     (testing "if there is no matching expression it should give a meaningful error message"
-      (is (= {:message "No expression named double-price found. Found: (\"one-hundred\")"
-              :data    {:type :invalid-query, :clause [:expression "double-price"], :expressions {"one-hundred" 100}}}
+      (is (= {:data    {:expression-name "double-price"
+                        :tried           ["double-price" :double-price]
+                        :found           #{"one-hundred"}
+                        :type            :invalid-query}
+              :message "No expression named 'double-price'"}
              (try
                (mt/$ids venues
                  (#'annotate/col-info-for-field-clause {:expressions {"one-hundred" 100}} [:expression "double-price"]))
@@ -327,40 +331,40 @@
   (mt/with-everything-store
     (testing "basic aggregation clauses"
       (testing "`:count` (no field)"
-        (is (= {:base_type :type/Float, :special_type :type/Number, :name "expression", :display_name "Count / 2"}
+        (is (= {:base_type :type/Float, :semantic_type :type/Number, :name "expression", :display_name "Count / 2"}
                (col-info-for-aggregation-clause [:/ [:count] 2]))))
 
       (testing "`:sum`"
-        (is (= {:base_type :type/Float, :special_type :type/Number, :name "sum", :display_name "Sum of Price + 1"}
+        (is (= {:base_type :type/Float, :semantic_type :type/Number, :name "sum", :display_name "Sum of Price + 1"}
                (mt/$ids venues
                  (col-info-for-aggregation-clause [:sum [:+ $price 1]]))))))
 
     (testing "`:aggregation-options`"
       (testing "`:name` and `:display-name`"
-        (is (= {:base_type    :type/Integer
-                :special_type :type/Category
-                :settings     nil
-                :name         "sum_2"
-                :display_name "My custom name"}
+        (is (= {:base_type     :type/Integer
+                :semantic_type :type/Category
+                :settings      nil
+                :name          "sum_2"
+                :display_name  "My custom name"}
                (mt/$ids venues
                  (col-info-for-aggregation-clause
                   [:aggregation-options [:sum $price] {:name "sum_2", :display-name "My custom name"}])))))
 
       (testing "`:name` only"
-        (is (= {:base_type    :type/Integer
-                :special_type :type/Category
-                :settings     nil
-                :name         "sum_2"
-                :display_name "Sum of Price"}
+        (is (= {:base_type     :type/Integer
+                :semantic_type :type/Category
+                :settings      nil
+                :name          "sum_2"
+                :display_name  "Sum of Price"}
                (mt/$ids venues
                  (col-info-for-aggregation-clause [:aggregation-options [:sum $price] {:name "sum_2"}])))))
 
       (testing "`:display-name` only"
-        (is (= {:base_type    :type/Integer
-                :special_type :type/Category
-                :settings     nil
-                :name         "sum"
-                :display_name "My Custom Name"}
+        (is (= {:base_type     :type/Integer
+                :semantic_type :type/Category
+                :settings      nil
+                :name          "sum"
+                :display_name  "My Custom Name"}
                (mt/$ids venues
                  (col-info-for-aggregation-clause
                   [:aggregation-options [:sum $price] {:display-name "My Custom Name"}]))))))
@@ -377,7 +381,7 @@
               {:cols [{:name "totalEvents", :display_name "Total Events", :base_type :type/Text}]}))))
 
     (testing "col info for an `expression` aggregation w/ a named expression should work as expected"
-      (is (= {:base_type :type/Float, :special_type :type/Number, :name "sum", :display_name "Sum of double-price"}
+      (is (= {:base_type :type/Float, :semantic_type :type/Number, :name "sum", :display_name "Sum of double-price"}
              (mt/$ids venues
                (col-info-for-aggregation-clause {:expressions {"double-price" [:* $price 2]}} [:sum [:expression "double-price"]])))))))
 
@@ -394,88 +398,89 @@
                                       {})
       :cols
       first
-      (select-keys [:base_type :special_type])))
+      (select-keys [:base_type :semantic_type])))
 
 (deftest test-string-extracts
-  (is (= {:base_type    :type/Text
-          :special_type nil}
+  (is (= {:base_type     :type/Text
+          :semantic_type nil}
          (infered-col-type  [:trim "foo"])))
-  (is (= {:base_type    :type/Text
-          :special_type nil}
+  (is (= {:base_type     :type/Text
+          :semantic_type nil}
          (infered-col-type  [:ltrim "foo"])))
-  (is (= {:base_type    :type/Text
-          :special_type nil}
+  (is (= {:base_type     :type/Text
+          :semantic_type nil}
          (infered-col-type  [:rtrim "foo"])))
-  (is (= {:base_type    :type/BigInteger
-          :special_type :type/Number}
+  (is (= {:base_type     :type/BigInteger
+          :semantic_type :type/Number}
          (infered-col-type  [:length "foo"])))
-  (is (= {:base_type    :type/Text
-          :special_type nil}
+  (is (= {:base_type     :type/Text
+          :semantic_type nil}
          (infered-col-type  [:upper "foo"])))
-  (is (= {:base_type    :type/Text
-          :special_type nil}
+  (is (= {:base_type     :type/Text
+          :semantic_type nil}
          (infered-col-type  [:lower "foo"])))
-  (is (= {:base_type    :type/Text
-          :special_type nil}
+  (is (= {:base_type     :type/Text
+          :semantic_type nil}
          (infered-col-type  [:substring "foo" 2])))
-  (is (= {:base_type    :type/Text
-          :special_type nil}
+  (is (= {:base_type     :type/Text
+          :semantic_type nil}
          (infered-col-type  [:replace "foo" "f" "b"])))
-  (is (= {:base_type    :type/Text
-          :special_type nil}
+  (is (= {:base_type     :type/Text
+          :semantic_type nil}
          (infered-col-type  [:regex-match-first "foo" "f"])))
-  (is (= {:base_type    :type/Text
-          :special_type nil}
+  (is (= {:base_type     :type/Text
+          :semantic_type nil}
          (infered-col-type  [:concat "foo" "bar"])))
-  (is (= {:base_type    :type/Text
-          :special_type nil}
+  (is (= {:base_type     :type/Text
+          :semantic_type nil}
          (infered-col-type  [:coalesce "foo" "bar"])))
-  (is (= {:base_type    :type/Text
-          :special_type :type/Name}
-         (infered-col-type  [:coalesce [:field-id (data/id :venues :name)] "bar"]))))
+  (is (= {:base_type     :type/Text
+          :semantic_type :type/Name}
+         (infered-col-type  [:coalesce [:field-id (mt/id :venues :name)] "bar"]))))
 
 (deftest test-case
   (is (= {:base_type    :type/Text
-          :special_type nil}
-         (infered-col-type [:case [[[:> (data/id :venues :price) 2] "big"]]])))
+          :semantic_type nil}
+         (infered-col-type [:case [[[:> [:field-id (mt/id :venues :price)] 2] "big"]]])))
   (is (= {:base_type    :type/Float
-          :special_type :type/Number}
-         (infered-col-type [:case [[[:> (data/id :venues :price) 2] [:+ (data/id :venues :price) 1]]]])))
+          :semantic_type :type/Number}
+         (infered-col-type [:case [[[:> [:field-id (mt/id :venues :price)] 2]
+                                    [:+ [:field-id (mt/id :venues :price)] 1]]]])))
   (testing "Make sure we skip nils when infering case return type"
-    (is (= {:base_type    :type/Number
-            :special_type nil}
-           (infered-col-type [:case [[[:< (data/id :venues :price) 10] nil]
-                                     [[:> (data/id :venues :price) 2] 10]]]))))
+    (is (= {:base_type    :type/Float
+            :semantic_type :type/Number}
+           (infered-col-type [:case [[[:< [:field-id (mt/id :venues :price)] 10] [:value nil {:base_type :type/Number}]]
+                                     [[:> [:field-id (mt/id :venues :price)] 2] 10]]]))))
   (is (= {:base_type    :type/Float
-          :special_type :type/Number}
-         (infered-col-type [:case [[[:> (data/id :venues :price) 2] [:+ (data/id :venues :price) 1]]]]))))
+          :semantic_type :type/Number}
+         (infered-col-type [:case [[[:> [:field-id (mt/id :venues :price)] 2] [:+ [:field-id (mt/id :venues :price)] 1]]]]))))
 
 (deftest unique-name-key-test
   (testing "Make sure `:cols` always come back with a unique `:name` key (#8759)"
     (is (= {:cols
-            [{:base_type    :type/Number
-              :special_type :type/Number
-              :name         "count"
-              :display_name "count"
-              :source       :aggregation
-              :field_ref    [:aggregation 0]}
+            [{:base_type     :type/Number
+              :semantic_type :type/Number
+              :name          "count"
+              :display_name  "count"
+              :source        :aggregation
+              :field_ref     [:aggregation 0]}
              {:source       :aggregation
               :name         "sum"
               :display_name "sum"
               :base_type    :type/Number
               :field_ref    [:aggregation 1]}
-             {:base_type    :type/Number
-              :special_type :type/Number
-              :name         "count_2"
-              :display_name "count"
-              :source       :aggregation
-              :field_ref    [:aggregation 2]}
-             {:base_type    :type/Number
-              :special_type :type/Number
-              :name         "count_3"
-              :display_name "count_2"
-              :source       :aggregation
-              :field_ref    [:aggregation 3]}]}
+             {:base_type     :type/Number
+              :semantic_type :type/Number
+              :name          "count_2"
+              :display_name  "count"
+              :source        :aggregation
+              :field_ref     [:aggregation 2]}
+             {:base_type     :type/Number
+              :semantic_type :type/Number
+              :name          "count_3"
+              :display_name  "count_2"
+              :source        :aggregation
+              :field_ref     [:aggregation 3]}]}
            (add-column-info
             (mt/mbql-query venues
               {:aggregation [[:count]
@@ -492,7 +497,7 @@
     (is (= {:name            "discount_price",
             :display_name    "discount_price",
             :base_type       :type/Float,
-            :special_type    :type/Number,
+            :semantic_type    :type/Number,
             :expression_name "discount_price",
             :source          :fields,
             :field_ref       [:expression "discount_price"]}
@@ -508,17 +513,71 @@
 (deftest deduplicate-expression-names-test
   (testing "make sure multiple expressions come back with deduplicated names"
     (testing "expressions in aggregations"
-      (is (= [{:base_type :type/Float, :special_type :type/Number, :name "expression", :display_name "0.9 * Average of Price", :source :aggregation, :field_ref [:aggregation 0]}
-              {:base_type :type/Float, :special_type :type/Number, :name "expression_2", :display_name "0.8 * Average of Price", :source :aggregation, :field_ref [:aggregation 1]}]
+      (is (= [{:base_type :type/Float, :semantic_type :type/Number, :name "expression", :display_name "0.9 * Average of Price", :source :aggregation, :field_ref [:aggregation 0]}
+              {:base_type :type/Float, :semantic_type :type/Number, :name "expression_2", :display_name "0.8 * Average of Price", :source :aggregation, :field_ref [:aggregation 1]}]
              (:cols (add-column-info
                      (mt/mbql-query venues
                                       {:aggregation [[:* 0.9 [:avg $price]] [:* 0.8 [:avg $price]]]
                                        :limit       10})
                      {})))))
     (testing "named :expressions"
-      (is (= [{:name "prev_month", :display_name "prev_month", :base_type :type/DateTime, :special_type nil, :expression_name "prev_month", :source :fields, :field_ref [:expression "prev_month"]}]
+      (is (= [{:name "prev_month", :display_name "prev_month", :base_type :type/DateTime, :semantic_type nil, :expression_name "prev_month", :source :fields, :field_ref [:expression "prev_month"]}]
              (:cols (add-column-info
                      (mt/mbql-query users
                                       {:expressions {:prev_month [:+ $last_login [:interval -1 :month]]}
                                        :fields      [[:expression "prev_month"]], :limit 10})
                      {})))))))
+
+(deftest mbql-cols-nested-queries-test
+  (testing "Should be able to infer MBQL columns with nested queries"
+    (let [base-query (qp/query->preprocessed
+                      (mt/mbql-query venues
+                        {:joins [{:fields       :all
+                                  :source-table $$categories
+                                  :condition    [:= $category_id [:joined-field "c" $categories.id]]
+                                  :alias        "c"}]}))]
+      (doseq [level [0 1 2 3]]
+        (testing (format "%d level(s) of nesting" level)
+          (let [nested-query (mt/nest-query base-query level)]
+            (testing (format "\nQuery = %s" (u/pprint-to-str nested-query))
+              (is (= (mt/$ids venues
+                       [{:name "ID",          :id %id,              :field_ref $id}
+                        {:name "NAME",        :id %name,            :field_ref $name}
+                        {:name "CATEGORY_ID", :id %category_id,     :field_ref $category_id}
+                        {:name "LATITUDE",    :id %latitude,        :field_ref $latitude}
+                        {:name "LONGITUDE",   :id %longitude,       :field_ref $longitude}
+                        {:name "PRICE",       :id %price,           :field_ref $price}
+                        {:name "ID_2",        :id %categories.id,   :field_ref [:joined-field "c" $categories.id]}
+                        {:name "NAME_2",      :id %categories.name, :field_ref [:joined-field "c" $categories.name]}])
+                     (map #(select-keys % [:name :id :field_ref])
+                          (:cols (add-column-info nested-query {}))))))))))))
+
+(deftest inception-test
+  (testing "Should return correct metadata for an 'inception-style' nesting of source > source > source with a join (#14745)"
+    (mt/dataset sample-dataset
+      ;; these tests look at the metadata for just one column so it's easier to spot the differences.
+      (letfn [(ean-metadata [result]
+                (as-> (:cols result) result
+                  (u/key-by :name result)
+                  (get result "EAN")
+                  (select-keys result [:name :display_name :base_type :semantic_type :id :field_ref])))]
+        (testing "Make sure metadata is correct for the 'EAN' column with"
+          (let [base-query (qp/query->preprocessed
+                            (mt/mbql-query orders
+                              {:joins [{:fields       :all
+                                        :source-table $$products
+                                        :condition    [:= $product_id [:joined-field "Products" $products.id]]
+                                        :alias        "Products"}]
+                               :limit 10}))]
+            (doseq [level (range 4)]
+              (testing (format "%d level(s) of nesting" level)
+                (let [nested-query (mt/nest-query base-query level)]
+                  (testing (format "\nQuery = %s" (u/pprint-to-str nested-query))
+                    (is (= (mt/$ids products
+                             {:name         "EAN"
+                              :display_name "Products → Ean"
+                              :base_type    :type/Text
+                              :semantic_type nil
+                              :id           %ean
+                              :field_ref    [:joined-field "Products" $ean]})
+                           (ean-metadata (add-column-info nested-query {}))))))))))))))

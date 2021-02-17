@@ -2,21 +2,18 @@
   (:require [cheshire.generate :refer [add-encoder encode-map]]
             [clojure.tools.logging :as log]
             [medley.core :as m]
-            [metabase
-             [db :as mdb]
-             [driver :as driver]
-             [util :as u]]
             [metabase.api.common :refer [*current-user*]]
+            [metabase.db.util :as mdb.u]
+            [metabase.driver :as driver]
             [metabase.driver.util :as driver.u]
-            [metabase.models
-             [interface :as i]
-             [permissions :as perms]
-             [permissions-group :as perm-group]]
+            [metabase.models.interface :as i]
+            [metabase.models.permissions :as perms]
+            [metabase.models.permissions-group :as perm-group]
             [metabase.plugins.classloader :as classloader]
+            [metabase.util :as u]
             [metabase.util.i18n :refer [trs]]
-            [toucan
-             [db :as db]
-             [models :as models]]))
+            [toucan.db :as db]
+            [toucan.models :as models]))
 
 ;;; ----------------------------------------------- Entity & Lifecycle -----------------------------------------------
 
@@ -71,17 +68,21 @@
     ;; if the sync operation schedules have changed, we need to reschedule this DB
     (when (or new-metadata-schedule new-fieldvalues-schedule)
       (let [{old-metadata-schedule    :metadata_sync_schedule
-             old-fieldvalues-schedule :cache_field_values_schedule} (db/select-one [Database
-                                                                                    :metadata_sync_schedule
-                                                                                    :cache_field_values_schedule]
-                                                                      :id (u/get-id database))
+             old-fieldvalues-schedule :cache_field_values_schedule
+             existing-engine          :engine
+             existing-name            :name} (db/select-one [Database
+                                                             :metadata_sync_schedule
+                                                             :cache_field_values_schedule
+                                                             :engine
+                                                             :name]
+                                                            :id (u/the-id database))
             ;; if one of the schedules wasn't passed continue using the old one
-            new-metadata-schedule    (or new-metadata-schedule old-metadata-schedule)
-            new-fieldvalues-schedule (or new-fieldvalues-schedule old-fieldvalues-schedule)]
+            new-metadata-schedule            (or new-metadata-schedule old-metadata-schedule)
+            new-fieldvalues-schedule         (or new-fieldvalues-schedule old-fieldvalues-schedule)]
         (when-not (= [new-metadata-schedule new-fieldvalues-schedule]
                      [old-metadata-schedule old-fieldvalues-schedule])
           (log/info
-           (trs "{0} Database ''{1}'' sync/analyze schedules have changed!" (:engine database) (:name database))
+           (trs "{0} Database ''{1}'' sync/analyze schedules have changed!" existing-engine existing-name)
            "\n"
            (trs "Sync metadata was: ''{0}'' is now: ''{1}''" old-metadata-schedule new-metadata-schedule)
            "\n"
@@ -139,7 +140,7 @@
   [{:keys [id]}]
   (let [table-ids (db/select-ids 'Table, :db_id id, :active true)]
     (when (seq table-ids)
-      (db/select 'Field, :table_id [:in table-ids], :special_type (mdb/isa :type/PK)))))
+      (db/select 'Field, :table_id [:in table-ids], :semantic_type (mdb.u/isa :type/PK)))))
 
 (defn schema-exists?
   "Does `database` have any tables with `schema`?"

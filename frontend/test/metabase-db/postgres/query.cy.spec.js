@@ -2,12 +2,15 @@ import {
   signInAsAdmin,
   restore,
   addPostgresDatabase,
+  withDatabase,
+  visitQuestionAdhoc,
 } from "__support__/cypress";
 
 const PG_DB_NAME = "QA Postgres12";
+const PG_DB_ID = 2;
 
 describe("postgres > user > query", () => {
-  before(() => {
+  beforeEach(() => {
     restore();
     signInAsAdmin();
     addPostgresDatabase(PG_DB_NAME);
@@ -34,5 +37,37 @@ describe("postgres > user > query", () => {
     // This could be omitted because real test is searching for "37.65" on the page
     cy.findByText("There was a problem with your question").should("not.exist");
     cy.contains("37.65");
+  });
+
+  it("should display pivot tables  (metabase#14148)", () => {
+    cy.server();
+    cy.route("POST", "/api/dataset/pivot").as("pivotDataset");
+
+    withDatabase(PG_DB_ID, ({ PEOPLE, PEOPLE_ID }) =>
+      visitQuestionAdhoc({
+        display: "pivot",
+        dataset_query: {
+          type: "query",
+          database: PG_DB_ID,
+          query: {
+            "source-table": PEOPLE_ID,
+            aggregation: [["count"]],
+            breakout: [
+              ["field-id", PEOPLE.SOURCE],
+              ["datetime-field", ["field-id", PEOPLE.CREATED_AT], "year"],
+            ],
+          },
+        },
+      }),
+    );
+
+    cy.log(
+      "**Reported failing on v0.38.0-rc1 querying Postgres, Redshift and BigQuery. It works on MySQL and H2.**",
+    );
+    cy.wait("@pivotDataset").then(xhr => {
+      expect(xhr.response.body.cause || "").not.to.contain("ERROR");
+    });
+    cy.findByText(/Grand totals/i);
+    cy.findByText("2,500");
   });
 });

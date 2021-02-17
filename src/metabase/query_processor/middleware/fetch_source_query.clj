@@ -20,21 +20,18 @@
     {:database 1, :type :query, :query {:source-query {...}, :source-metadata {...}}}
 
   TODO - consider renaming this namespace to `metabase.query-processor.middleware.resolve-card-id-source-tables`"
-  (:require [clojure
-             [set :as set]
-             [string :as str]]
+  (:require [clojure.set :as set]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [medley.core :as m]
-            [metabase.mbql
-             [normalize :as normalize]
-             [schema :as mbql.s]
-             [util :as mbql.u]]
+            [metabase.mbql.normalize :as normalize]
+            [metabase.mbql.schema :as mbql.s]
+            [metabase.mbql.util :as mbql.u]
             [metabase.models.card :refer [Card]]
             [metabase.query-processor.interface :as i]
             [metabase.util :as u]
-            [metabase.util
-             [i18n :refer [trs tru]]
-             [schema :as su]]
+            [metabase.util.i18n :refer [trs tru]]
+            [metabase.util.schema :as su]
             [schema.core :as s]
             [toucan.db :as db]
             [weavejester.dependency :as dep]))
@@ -113,7 +110,7 @@
               ;; rename `:query` to `:native` because source queries have a slightly different shape
               (let [native-query (set/rename-keys native-query {:query :native})]
                 (cond-> native-query
-                  ;; trim trailing slashes from SQL, but not other types of native queries
+                  ;; trim trailing comments from SQL, but not other types of native queries
                   (string? (:native native-query)) (update :native (partial trim-sql-query card-id))
                   (empty? template-tags)           (dissoc :template-tags))))
             (throw (ex-info (tru "Missing source query in Card {0}" card-id)
@@ -128,7 +125,7 @@
                 (u/pprint-to-str 'yellow source-query)))
     {:source-query    source-query
      :database        database-id
-     :source-metadata (normalize/normalize-fragment [:query :source-metadata] result-metadata)}))
+     :source-metadata (seq (map normalize/normalize-source-metadata result-metadata))}))
 
 (s/defn ^:private source-table-str->card-id :- su/IntGreaterThanZero
   [source-table-str :- mbql.s/source-table-card-id-regex]
@@ -169,9 +166,9 @@
       (try
         (resolve-all* resolved)
         (catch Throwable e
-          (throw (ex-info (.getMessage e)
-                   {:resolving &match, :resolved resolved}
-                   e)))))))
+          (throw (ex-info (tru "Error resolving source query")
+                          {:resolving &match, :resolved resolved}
+                          e)))))))
 
 (defn- check-for-circular-references
   "Check that there are no circular dependencies among source cards. This is equivalent to

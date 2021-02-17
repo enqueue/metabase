@@ -5,15 +5,13 @@
   (:require [clojure.tools.logging :as log]
             [metabase.api.common :as api]
             [metabase.mbql.util :as mbql.u]
-            [metabase.models
-             [interface :as i]
-             [permissions :as perms]
-             [table :refer [Table]]]
+            [metabase.models.interface :as i]
+            [metabase.models.permissions :as perms]
+            [metabase.models.table :refer [Table]]
             [metabase.query-processor.util :as qputil]
             [metabase.util :as u]
-            [metabase.util
-             [i18n :refer [tru]]
-             [schema :as su]]
+            [metabase.util.i18n :refer [tru]]
+            [metabase.util.schema :as su]
             [schema.core :as s]
             [toucan.db :as db]))
 
@@ -126,11 +124,10 @@
     ;; if for some reason we can't expand the Card (i.e. it's an invalid legacy card) just return a set of permissions
     ;; that means no one will ever get to see it (except for superusers who get to see everything)
     (catch Throwable e
-      (when throw-exceptions?
-        (throw e))
-      (log/error (tru "Error calculating permissions for query: {0}" (.getMessage e))
-                 "\n"
-                 (u/pprint-to-str (u/filtered-stacktrace e)))
+      (let [e (ex-info "Error calculating permissions for query" {:query query} e)]
+        (when throw-exceptions?
+          (throw e))
+        (log/error e))
       #{"/db/0/"})))                    ; DB 0 will never exist
 
 (s/defn ^:private perms-set* :- #{perms/ObjectPath}

@@ -101,12 +101,20 @@ export default class Question {
    */
   constructor(
     card: CardObject,
-    metadata: Metadata,
+    metadata?: Metadata,
     parameterValues?: ParameterValues,
     update?: ?QuestionUpdateFn,
   ) {
     this._card = card;
-    this._metadata = metadata;
+    this._metadata =
+      metadata ||
+      new Metadata({
+        databases: {},
+        tables: {},
+        fields: {},
+        metrics: {},
+        segments: {},
+      });
     this._parameterValues = parameterValues || {};
     this._update = update;
   }
@@ -824,7 +832,11 @@ export default class Question {
       };
 
       return [
-        await maybeUsePivotEndpoint(CardApi.query, this.card())(queryParams, {
+        await maybeUsePivotEndpoint(
+          CardApi.query,
+          this.card(),
+          this.metadata(),
+        )(queryParams, {
           cancelled: cancelDeferred.promise,
         }),
       ];
@@ -835,7 +847,11 @@ export default class Question {
           parameters,
         };
 
-        return maybeUsePivotEndpoint(MetabaseApi.dataset, this.card())(
+        return maybeUsePivotEndpoint(
+          MetabaseApi.dataset,
+          this.card(),
+          this.metadata(),
+        )(
           datasetQueryWithParameters,
           cancelDeferred ? { cancelled: cancelDeferred.promise } : {},
         );

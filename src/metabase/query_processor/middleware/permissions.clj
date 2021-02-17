@@ -3,16 +3,14 @@
   (:require [clojure.set :as set]
             [clojure.tools.logging :as log]
             [metabase.api.common :refer [*current-user-id* *current-user-permissions-set*]]
-            [metabase.models
-             [card :refer [Card]]
-             [interface :as mi]
-             [permissions :as perms]]
+            [metabase.models.card :refer [Card]]
+            [metabase.models.interface :as mi]
+            [metabase.models.permissions :as perms]
             [metabase.models.query.permissions :as query-perms]
             [metabase.query-processor.error-type :as error-type]
             [metabase.query-processor.middleware.resolve-referenced :as qp.resolve-referenced]
-            [metabase.util
-             [i18n :refer [tru]]
-             [schema :as su]]
+            [metabase.util.i18n :refer [tru]]
+            [metabase.util.schema :as su]
             [schema.core :as s]
             [toucan.db :as db]))
 
@@ -37,7 +35,8 @@
 (declare check-query-permissions*)
 
 (s/defn ^:private check-ad-hoc-query-perms
-  [{:keys [gtap-perms], :as outer-query}]
+  {:arglists '([outer-query context])}
+  [outer-query {:keys [gtap-perms]}]
   ;; *If* we're using a GTAP, the User is obviously allowed to run its source query. So subtract the set of
   ;; perms required to run the source query. (See further discussion in
   ;; metabase-enterprise.sandbox.query-processor.middleware.row-level-restrictions)
@@ -52,12 +51,12 @@
 
 (s/defn ^:private check-query-permissions*
   "Check that User with `user-id` has permissions to run `query`, or throw an exception."
-  [{{:keys [card-id]} :info, :as outer-query} :- su/Map]
+  [{{:keys [card-id]} :info, :as outer-query} :- su/Map context]
   (when *current-user-id*
     (log/tracef "Checking query permissions. Current user perms set = %s" (pr-str @*current-user-permissions-set*))
     (if card-id
       (check-card-read-perms card-id)
-      (check-ad-hoc-query-perms outer-query))))
+      (check-ad-hoc-query-perms outer-query context))))
 
 (defn check-query-permissions
   "Middleware that check that the current user has permissions to run the current query. This only applies if
@@ -66,7 +65,7 @@
   'publishing' a Card)."
   [qp]
   (fn [query rff context]
-    (check-query-permissions* query)
+    (check-query-permissions* query context)
     (qp query rff context)))
 
 

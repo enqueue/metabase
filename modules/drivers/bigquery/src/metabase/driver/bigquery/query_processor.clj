@@ -1,30 +1,25 @@
 (ns metabase.driver.bigquery.query-processor
   (:require [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [honeysql
-             [core :as hsql]
-             [format :as hformat]
-             [helpers :as h]]
+            [honeysql.core :as hsql]
+            [honeysql.format :as hformat]
+            [honeysql.helpers :as h]
             [java-time :as t]
-            [metabase
-             [driver :as driver]
-             [util :as u]]
+            [metabase.driver :as driver]
             [metabase.driver.sql :as sql]
             [metabase.driver.sql.parameters.substitution :as sql.params.substitution]
             [metabase.driver.sql.query-processor :as sql.qp]
             [metabase.driver.sql.util.unprepare :as unprepare]
             [metabase.mbql.util :as mbql.u]
-            [metabase.models
-             [field :refer [Field]]
-             [setting :as setting]
-             [table :as table]]
-            [metabase.query-processor
-             [error-type :as error-type]
-             [store :as qp.store]]
-            [metabase.util
-             [date-2 :as u.date]
-             [honeysql-extensions :as hx]
-             [i18n :refer [tru]]]
+            [metabase.models.field :refer [Field]]
+            [metabase.models.setting :as setting]
+            [metabase.models.table :as table]
+            [metabase.query-processor.error-type :as error-type]
+            [metabase.query-processor.store :as qp.store]
+            [metabase.util :as u]
+            [metabase.util.date-2 :as u.date]
+            [metabase.util.honeysql-extensions :as hx]
+            [metabase.util.i18n :refer [tru]]
             [schema.core :as s]
             [toucan.db :as db])
   (:import [java.time LocalDate LocalDateTime LocalTime OffsetDateTime OffsetTime ZonedDateTime]
@@ -503,17 +498,23 @@
   ;; currently only used for SQL params so it's not a huge deal at this point
   ;;
   ;; TODO - we should make sure these are in the QP store somewhere and then could at least batch the calls
-  (let [table-name (db/select-one-field :name table/Table :id (u/get-id table-id))]
+  (let [table-name (db/select-one-field :name table/Table :id (u/the-id table-id))]
     (with-temporal-type (hx/identifier :field table-name field-name) (temporal-type field))))
 
 (defmethod sql.qp/apply-top-level-clause [:bigquery :breakout]
-  [driver _ honeysql-form {breakouts :breakout, fields :fields}]
+  [driver _ honeysql-form {breakouts :breakout, fields :fields, :as query}]
   (-> honeysql-form
       ;; Group by all the breakout fields.
       ;;
       ;; Unlike other SQL drivers, BigQuery requires that we refer to Fields using the alias we gave them in the
       ;; `SELECT` clause, rather than repeating their definitions.
-      ((partial apply h/group) (map (partial sql.qp/field-clause->alias driver) breakouts))
+      ((partial apply h/group) (for [breakout breakouts
+                                     :let     [alias (or (sql.qp/field-clause->alias driver breakout)
+                                                         (throw (ex-info (tru "Error compiling SQL: breakout does not have an alias")
+                                                                         {:type     error-type/qp
+                                                                          :breakout breakout
+                                                                          :query    query})))]]
+                                 alias))
       ;; Add fields form only for fields that weren't specified in :fields clause -- we don't want to include it
       ;; twice, or HoneySQL will barf
       ((partial apply h/merge-select) (for [field-clause breakouts
@@ -615,7 +616,7 @@
     (assert (seq dataset-id))
     (binding [sql.qp/*query* (assoc outer-query :dataset-id dataset-id)]
       (let [[sql & params] (->> outer-query
-                                (sql.qp/build-honeysql-form driver)
+                                (sql.qp/mbql->honeysql driver)
                                 (sql.qp/format-honeysql driver))]
         {:query      sql
          :params     params

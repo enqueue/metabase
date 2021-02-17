@@ -2,17 +2,14 @@
   "Driver for SQLServer databases. Uses the official Microsoft JDBC driver under the hood (pre-0.25.0, used jTDS)."
   (:require [honeysql.core :as hsql]
             [java-time :as t]
-            [metabase
-             [config :as config]
-             [driver :as driver]]
-            [metabase.driver
-             [common :as driver.common]
-             [sql :as sql]]
-            [metabase.driver.sql-jdbc
-             [common :as sql-jdbc.common]
-             [connection :as sql-jdbc.conn]
-             [execute :as sql-jdbc.execute]
-             [sync :as sql-jdbc.sync]]
+            [metabase.config :as config]
+            [metabase.driver :as driver]
+            [metabase.driver.common :as driver.common]
+            [metabase.driver.sql :as sql]
+            [metabase.driver.sql-jdbc.common :as sql-jdbc.common]
+            [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
+            [metabase.driver.sql-jdbc.execute :as sql-jdbc.execute]
+            [metabase.driver.sql-jdbc.sync :as sql-jdbc.sync]
             [metabase.driver.sql.query-processor :as sql.qp]
             [metabase.driver.sql.util.unprepare :as unprepare]
             [metabase.query-processor.interface :as qp.i]
@@ -198,7 +195,7 @@
   (date-add :minute (hx// expr 60) (hx/literal "1970-01-01")))
 
 (defmethod sql.qp/cast-temporal-string [:sqlserver :type/ISO8601DateTimeString]
-  [_driver _special_type expr]
+  [_driver _semantic_type expr]
   (hx/->datetime expr))
 
 (defmethod sql.qp/apply-top-level-clause [:sqlserver :limit]

@@ -26,6 +26,13 @@ describe("formatting", () => {
       expect(formatNumber(-10)).toEqual("-10");
       expect(formatNumber(-99999999)).toEqual("-99,999,999");
     });
+    it("should format large numbers correctly with non-default number separator", () => {
+      const options = { number_separators: ",." };
+      expect(formatNumber(10.1, options)).toEqual("10,1");
+      expect(formatNumber(99999999.9, options)).toEqual("99.999.999,9");
+      expect(formatNumber(-10.1, options)).toEqual("-10,1");
+      expect(formatNumber(-99999999.9, options)).toEqual("-99.999.999,9");
+    });
     it("should format to 2 significant digits", () => {
       expect(formatNumber(1 / 3)).toEqual("0.33");
       expect(formatNumber(-1 / 3)).toEqual("-0.33");
@@ -168,26 +175,26 @@ describe("formatting", () => {
     it("should format numbers with commas", () => {
       expect(
         formatValue(12345, {
-          column: { base_type: TYPE.Number, special_type: TYPE.Number },
+          column: { base_type: TYPE.Number, semantic_type: TYPE.Number },
         }),
       ).toEqual("12,345");
     });
     it("should format zip codes without commas", () => {
       expect(
         formatValue(12345, {
-          column: { base_type: TYPE.Number, special_type: TYPE.ZipCode },
+          column: { base_type: TYPE.Number, semantic_type: TYPE.ZipCode },
         }),
       ).toEqual("12345");
     });
     it("should format latitude and longitude columns correctly", () => {
       expect(
         formatValue(37.7749, {
-          column: { base_type: TYPE.Number, special_type: TYPE.Latitude },
+          column: { base_type: TYPE.Number, semantic_type: TYPE.Latitude },
         }),
       ).toEqual("37.77490000° N");
       expect(
         formatValue(-122.4194, {
-          column: { base_type: TYPE.Number, special_type: TYPE.Longitude },
+          column: { base_type: TYPE.Number, semantic_type: TYPE.Longitude },
         }),
       ).toEqual("122.41940000° W");
     });
@@ -222,12 +229,12 @@ describe("formatting", () => {
         ),
       ).toEqual(true);
     });
-    it("should not add mailto prefix if there's a different special type", () => {
+    it("should not add mailto prefix if there's a different semantic type", () => {
       expect(
         formatValue("foobar@example.com", {
           jsx: true,
           rich: true,
-          column: { special_type: "type/PK" },
+          column: { semantic_type: "type/PK" },
         }),
       ).toEqual("foobar@example.com");
     });
@@ -289,7 +296,7 @@ describe("formatting", () => {
           formatUrl("myproto:some-custom-thing", {
             jsx: true,
             rich: true,
-            column: { special_type: TYPE.URL },
+            column: { semantic_type: TYPE.URL },
           }),
           ExternalLink,
         ),
@@ -300,7 +307,7 @@ describe("formatting", () => {
         formatUrl("invalid-blah-blah-blah", {
           jsx: true,
           rich: true,
-          column: { special_type: TYPE.URL },
+          column: { semantic_type: TYPE.URL },
         }),
       ).toEqual("invalid-blah-blah-blah");
     });
@@ -332,7 +339,7 @@ describe("formatting", () => {
       const formatted = formatUrl("http://whatever", {
         jsx: true,
         rich: true,
-        column: { special_type: TYPE.URL },
+        column: { semantic_type: TYPE.URL },
         view_as: "link",
       });
       expect(isElementOfType(formatted, ExternalLink)).toEqual(true);

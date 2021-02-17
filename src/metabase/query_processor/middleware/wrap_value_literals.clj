@@ -1,13 +1,11 @@
 (ns metabase.query-processor.middleware.wrap-value-literals
   "Middleware that wraps value literals in `value`/`absolute-datetime`/etc. clauses containing relevant type
   information; parses datetime string literals when appropriate."
-  (:require [metabase.mbql
-             [schema :as mbql.s]
-             [util :as mbql.u]]
+  (:require [metabase.mbql.schema :as mbql.s]
+            [metabase.mbql.util :as mbql.u]
             [metabase.models.field :refer [Field]]
-            [metabase.query-processor
-             [store :as qp.store]
-             [timezone :as qp.timezone]]
+            [metabase.query-processor.store :as qp.store]
+            [metabase.query-processor.timezone :as qp.timezone]
             [metabase.types :as types]
             [metabase.util.date-2 :as u.date])
   (:import [java.time LocalDate LocalDateTime LocalTime OffsetDateTime OffsetTime ZonedDateTime]))
@@ -15,7 +13,7 @@
 ;;; --------------------------------------------------- Type Info ----------------------------------------------------
 
 (defmulti ^:private type-info
-  "Get information about database, base, and special types for an object. This is passed to along to various
+  "Get information about database, base, and semantic types for an object. This is passed to along to various
   `->honeysql` method implementations so drivers have the information they need to handle raw values like Strings,
   which may need to be parsed as a certain type."
   {:arglists '([field-clause])}
@@ -24,7 +22,7 @@
 (defmethod type-info :default [_] nil)
 
 (defmethod type-info (class Field) [this]
-  (let [field-info (select-keys this [:base_type :special_type :database_type :name])]
+  (let [field-info (select-keys this [:base_type :semantic_type :database_type :name])]
     (merge
      field-info
      ;; add in a default unit for this Field so we know to wrap datetime strings in `absolute-datetime` below based on

@@ -73,15 +73,19 @@ export function restore(name = "default") {
 export function popover() {
   return cy.get(".PopoverContainer.PopoverContainer--open");
 }
+
 export function modal() {
   return cy.get(".ModalContainer .ModalContent");
 }
+
 export function nav() {
   return cy.get("nav");
 }
+
 export function main() {
   return cy.get("nav").next();
 }
+
 export function sidebar() {
   return cy.get(".scroll-y");
 }
@@ -182,10 +186,10 @@ export function withDatabase(databaseId, f) {
     for (const table of body.tables) {
       const fields = {};
       for (const field of table.fields) {
-        fields[field.name] = field.id;
+        fields[field.name.toUpperCase()] = field.id;
       }
-      database[table.name] = fields;
-      database[table.name + "_ID"] = table.id;
+      database[table.name.toUpperCase()] = fields;
+      database[table.name.toUpperCase() + "_ID"] = table.id;
     }
     f(database);
   });
@@ -218,6 +222,10 @@ export const describeWithToken = Cypress.env("HAS_ENTERPRISE_TOKEN")
   ? describe
   : describe.skip;
 
+export const itOpenSourceOnly = Cypress.env("HAS_ENTERPRISE_TOKEN")
+  ? it.skip
+  : it;
+
 // TODO: does this really need to be a global helper function?
 export function createBasicAlert({ firstAlert, includeNormal } = {}) {
   cy.get(".Icon-bell").click();
@@ -235,6 +243,39 @@ export function createBasicAlert({ firstAlert, includeNormal } = {}) {
   }
   cy.findByText("Done").click();
   cy.findByText("Let's set up your alert").should("not.exist");
+}
+
+export function setupDummySMTP() {
+  cy.log("**Set up dummy SMTP server**");
+  cy.request("PUT", "/api/setting", {
+    "email-smtp-host": "smtp.foo.test",
+    "email-smtp-port": "587",
+    "email-smtp-security": "none",
+    "email-smtp-username": "nevermind",
+    "email-smtp-password": "it-is-secret-NOT",
+    "email-from-address": "nonexisting@metabase.test",
+  });
+}
+
+export function expectedRouteCalls({ route_alias, calls } = {}) {
+  const requestsCount = alias =>
+    cy.state("requests").filter(req => req.alias === alias);
+  // It is hard and unreliable to assert that something didn't happen in Cypress
+  // This solution was the only one that worked out of all others proposed in this SO topic: https://stackoverflow.com/a/59302542/8815185
+  cy.get("@" + route_alias).then(() => {
+    expect(requestsCount(route_alias)).to.have.length(calls);
+  });
+}
+
+export function remapDisplayValueToFK({ display_value, name, fk } = {}) {
+  // Both display_value and fk are expected to be field IDs
+  // You can get them from frontend/test/__support__/cypress_sample_dataset.json
+  cy.request("POST", `/api/field/${display_value}/dimension`, {
+    field_id: display_value,
+    name,
+    human_readable_field_id: fk,
+    type: "external",
+  });
 }
 
 /*****************************************
@@ -303,4 +344,26 @@ function addQADatabase(engine, db_display_name, port) {
   cy.request("POST", "/api/database/2/rescan_values").then(({ status }) => {
     expect(status).to.equal(200);
   });
+}
+
+export function adhocQuestionHash(question) {
+  if (question.display) {
+    // without "locking" the display, the QB will run its picking logic and override the setting
+    question = Object.assign({}, question, { displayIsLocked: true });
+  }
+  return btoa(unescape(encodeURIComponent(JSON.stringify(question))));
+}
+
+export function visitQuestionAdhoc(question) {
+  cy.visit("/question#" + adhocQuestionHash(question));
+}
+
+export function getIframeBody(selector = "iframe") {
+  return cy
+    .get(selector)
+    .its("0.contentDocument")
+    .should("exist")
+    .its("body")
+    .should("not.be.null")
+    .then(cy.wrap);
 }
