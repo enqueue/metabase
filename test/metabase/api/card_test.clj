@@ -455,13 +455,13 @@
         (mt/with-temp Collection [collection]
           (perms/grant-collection-readwrite-permissions! (perms-group/all-users) collection)
           (mt/with-model-cleanup [Card]
-            ;; Rebind the `prepared-statement` function so that we can capture the generated SQL and inspect it
-            (let [orig       (var-get #'sql-jdbc.execute/prepared-statement)
+            ;; Rebind the `execute-statement!` function so that we can capture the generated SQL and inspect it
+            (let [orig       (var-get #'sql-jdbc.execute/execute-statement!)
                   sql-result (atom nil)]
-              (with-redefs [sql-jdbc.execute/prepared-statement
-                            (fn [driver conn sql params]
+              (with-redefs [sql-jdbc.execute/execute-statement!
+                            (fn [driver stmt sql]
                               (reset! sql-result sql)
-                              (orig driver conn sql params))]
+                              (orig driver stmt sql))]
                 ;; create a card with the metadata
                 (mt/user-http-request :rasta :post 202 "card"
                                       (assoc (card-with-name-and-query card-name)
@@ -974,9 +974,9 @@
                              :dataset_query          (assoc-in
                                                       (mbql-count-query (mt/id) (mt/id :checkins))
                                                       [:query :breakout]
-                                                      [["datetime-field"
+                                                      [[:field
                                                         (mt/id :checkins :date)
-                                                        "hour"]])}
+                                                        {:temporal-unit :hour}]])}
             :expected-email "the question was edited by Crowberto Corv"
             :f              (fn [{:keys [card]}]
                               (mt/user-http-request :crowberto :put 202 (str "card/" (u/the-id card))

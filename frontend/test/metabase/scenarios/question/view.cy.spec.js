@@ -98,7 +98,7 @@ describe("scenarios > question > view", () => {
     beforeEach(() => {
       // All users upgraded to collection view access
       cy.visit("/admin/permissions/collections");
-      cy.get(".Icon-close")
+      cy.icon("close")
         .first()
         .click();
       cy.findByText("View collection").click();
@@ -122,7 +122,7 @@ describe("scenarios > question > view", () => {
                 name: "category",
                 "display-name": "CATEGORY",
                 type: "dimension",
-                dimension: ["field-id", PRODUCTS.CATEGORY],
+                dimension: ["field", PRODUCTS.CATEGORY, null],
                 "widget-type": "id",
               },
               vendor: {
@@ -130,7 +130,7 @@ describe("scenarios > question > view", () => {
                 name: "vendor",
                 "display-name": "VENDOR",
                 type: "dimension",
-                dimension: ["field-id", PRODUCTS.VENDOR],
+                dimension: ["field", PRODUCTS.VENDOR, null],
                 "widget-type": "id",
               },
             },

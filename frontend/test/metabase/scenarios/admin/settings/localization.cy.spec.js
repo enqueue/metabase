@@ -22,10 +22,8 @@ describe("scenarios > admin > permissions", () => {
         query: {
           "source-table": ORDERS_ID,
           aggregation: [["count"]],
-          breakout: [
-            ["datetime-field", ["field-id", ORDERS.CREATED_AT], "week"],
-          ],
-          filter: ["<", ["field-id", ORDERS.CREATED_AT], "2016-06-01"],
+          breakout: [["field", ORDERS.CREATED_AT, { "temporal-unit": "week" }]],
+          filter: ["<", ["field", ORDERS.CREATED_AT, null], "2016-06-01"],
         },
         type: "query",
       },
@@ -37,7 +35,7 @@ describe("scenarios > admin > permissions", () => {
     cy.visit("/collection/root");
     cy.findByText("Orders created before June 1st 2016").click();
 
-    cy.log("**Assert the dates on the X axis**");
+    cy.log("Assert the dates on the X axis");
     // it's hard and tricky to invoke hover in Cypress, especially in our graphs
     // that's why we have to assert on the x-axis, instead of a popover that shows on a dot hover
     cy.get(".axis.x").contains("April 25, 2016");
@@ -52,11 +50,11 @@ describe("scenarios > admin > permissions", () => {
           "source-table": ORDERS_ID,
           aggregation: [["count"]],
           breakout: [
-            ["datetime-field", ["field-id", ORDERS.CREATED_AT], "day-of-week"],
+            ["field", ORDERS.CREATED_AT, { "temporal-unit": "day-of-week" }],
           ],
           filter: [
             "between",
-            ["field-id", ORDERS.CREATED_AT],
+            ["field", ORDERS.CREATED_AT, null],
             "2020-03-02", // Monday
             "2020-03-03", // Tuesday
           ],
@@ -74,7 +72,7 @@ describe("scenarios > admin > permissions", () => {
     cy.visit("/collection/root");
     cy.findByText("13604").click();
 
-    cy.log("**Reported failing on v0.37.0.2 and labeled as `.Regression`**");
+    cy.log("Reported failing on v0.37.0.2 and labeled as `.Regression`");
     cy.get(".axis.x")
       .contains(/sunday/i)
       .should("not.exist");
@@ -101,7 +99,7 @@ describe("scenarios > admin > permissions", () => {
               name: "date_range",
               "display-name": "Date range",
               type: "dimension",
-              dimension: ["field-id", ORDERS.CREATED_AT],
+              dimension: ["field", ORDERS.CREATED_AT, null],
               "widget-type": "date/all-options",
               default: "past220weeks",
               required: true,

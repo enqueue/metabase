@@ -30,7 +30,7 @@ describe("scenarios > question > custom columns", () => {
   it("can create a custom column (metabase#13241)", () => {
     const columnName = "Simple Math";
     openOrdersTable({ mode: "notebook" });
-    cy.get(".Icon-add_data").click();
+    cy.icon("add_data").click();
 
     popover().within(() => {
       _typeUsingGet("[contenteditable='true']", "1 + 1");
@@ -51,7 +51,7 @@ describe("scenarios > question > custom columns", () => {
   it("can create a custom column with an existing column name", () => {
     customFormulas.forEach(({ customFormula, columnName }) => {
       openOrdersTable({ mode: "notebook" });
-      cy.get(".Icon-add_data").click();
+      cy.icon("add_data").click();
 
       popover().within(() => {
         _typeUsingGet("[contenteditable='true']", customFormula);
@@ -81,7 +81,7 @@ describe("scenarios > question > custom columns", () => {
 
     // TODO: There isn't a single unique parent that can be used to scope this icon within
     // (a good candidate would be `.NotebookCell`)
-    cy.get(".Icon-add")
+    cy.icon("add")
       .last() // This is brittle.
       .click();
 
@@ -140,7 +140,7 @@ describe("scenarios > question > custom columns", () => {
       cy.findByText(columnName).click();
     });
 
-    cy.get(".Icon-add")
+    cy.icon("add")
       .last()
       .click();
 
@@ -190,7 +190,7 @@ describe("scenarios > question > custom columns", () => {
     cy.log(
       "**Fails in 0.35.0, 0.35.1, 0.35.2, 0.35.4 and the latest master (2020-10-21)**",
     );
-    cy.log("**Works in 0.35.3**");
+    cy.log("Works in 0.35.3");
     // ID should be "1" but it is picking the product ID and is showing "14"
     cy.get(".TableInteractive-cellWrapper--firstColumn")
       .eq(1) // the second cell from the top in the first column (the first one is a header cell)
@@ -211,14 +211,18 @@ describe("scenarios > question > custom columns", () => {
         database: 1,
         query: {
           expressions: {
-            [CC_NAME]: ["*", ["field-literal", CE_NAME, "type/Float"], 1234],
+            [CC_NAME]: [
+              "*",
+              ["field", CE_NAME, { "base-type": "type/Float" }],
+              1234,
+            ],
           },
           "source-query": {
             aggregation: [
               ["aggregation-options", ["*", 1, 1], { "display-name": CE_NAME }],
             ],
             breakout: [
-              ["datetime-field", ["field-id", ORDERS.CREATED_AT], "month"],
+              ["field", ORDERS.CREATED_AT, { "temporal-unit": "month" }],
             ],
             "source-table": ORDERS_ID,
           },
@@ -233,7 +237,7 @@ describe("scenarios > question > custom columns", () => {
 
       cy.visit(`/question/${QUESTION_ID}`);
 
-      cy.log("**Reported failing v0.34.3 through v0.37.2**");
+      cy.log("Reported failing v0.34.3 through v0.37.2");
       cy.wait("@cardQuery").then(xhr => {
         expect(xhr.response.body.error).not.to.exist;
       });
@@ -256,17 +260,11 @@ describe("scenarios > question > custom columns", () => {
           aggregation: [
             [
               "distinct",
-              [
-                "fk->",
-                ["field-id", ORDERS.PRODUCT_ID],
-                ["field-id", PRODUCTS.ID],
-              ],
+              ["field", PRODUCTS.ID, { "source-field": ORDERS.PRODUCT_ID }],
             ],
             ["sum", ["expression", CC_NAME]],
           ],
-          breakout: [
-            ["datetime-field", ["field-id", ORDERS.CREATED_AT], "year"],
-          ],
+          breakout: [["field", ORDERS.CREATED_AT, { "temporal-unit": "year" }]],
         },
         type: "query",
       },
@@ -278,7 +276,7 @@ describe("scenarios > question > custom columns", () => {
 
       cy.visit(`/question/${QUESTION_ID}`);
 
-      cy.log("**Regression since v0.37.1 - it works on v0.37.0**");
+      cy.log("Regression since v0.37.1 - it works on v0.37.0");
       cy.wait("@cardQuery").then(xhr => {
         expect(xhr.response.body.error).not.to.exist;
       });
@@ -298,7 +296,7 @@ describe("scenarios > question > custom columns", () => {
           "source-query": {
             aggregation: [["cum-count"]],
             breakout: [
-              ["datetime-field", ["field-id", ORDERS.CREATED_AT], "month"],
+              ["field", ORDERS.CREATED_AT, { "temporal-unit": "month" }],
             ],
             "source-table": ORDERS_ID,
           },
@@ -311,7 +309,7 @@ describe("scenarios > question > custom columns", () => {
       cy.visit(`/question/${questionId}`);
       cy.findByText("13634");
 
-      cy.log("**Reported failing in v0.34.3, v0.35.4, v0.36.8.2, v0.37.0.2**");
+      cy.log("Reported failing in v0.34.3, v0.35.4, v0.36.8.2, v0.37.0.2");
       cy.findByText("Foo Bar");
       cy.findAllByText("57911");
     });
@@ -327,14 +325,18 @@ describe("scenarios > question > custom columns", () => {
         query: {
           "source-query": {
             "source-table": ORDERS_ID,
-            filter: [">", ["field-id", ORDERS.SUBTOTAL], 0],
-            aggregation: [["sum", ["field-id", ORDERS.TOTAL]]],
+            filter: [">", ["field", ORDERS.SUBTOTAL, null], 0],
+            aggregation: [["sum", ["field", ORDERS.TOTAL, null]]],
             breakout: [
-              ["datetime-field", ["field-id", ORDERS.CREATED_AT], "year"],
+              ["field", ORDERS.CREATED_AT, { "temporal-unit": "year" }],
             ],
           },
           expressions: {
-            [CC_NAME]: ["*", ["field-literal", "sum", "type/Float"], 2],
+            [CC_NAME]: [
+              "*",
+              ["field", "sum", { "base-type": "type/Float" }],
+              2,
+            ],
           },
         },
         database: 1,
@@ -345,7 +347,7 @@ describe("scenarios > question > custom columns", () => {
       cy.visit(`/question/${QUESTION_ID}`);
 
       // Test displays collapsed filter - click on number 1 to expand and show the filter name
-      cy.get(".Icon-filter")
+      cy.icon("filter")
         .parent()
         .contains("1")
         .click();
@@ -370,7 +372,7 @@ describe("scenarios > question > custom columns", () => {
         query: {
           "source-table": PRODUCTS_ID,
           expressions: {
-            [CC_NAME]: ["concat", ["field-id", PRODUCTS.CATEGORY], "2"],
+            [CC_NAME]: ["concat", ["field", PRODUCTS.CATEGORY, null], "2"],
           },
           aggregation: [["count"]],
           breakout: [["expression", CC_NAME]],
@@ -402,8 +404,8 @@ describe("scenarios > question > custom columns", () => {
               "source-table": PRODUCTS_ID,
               condition: [
                 "=",
-                ["field-id", ORDERS.PRODUCT_ID],
-                ["joined-field", "Products", ["field-id", PRODUCTS.ID]],
+                ["field", ORDERS.PRODUCT_ID, null],
+                ["field", PRODUCTS.ID, { "join-alias": "Products" }],
               ],
               alias: "Products",
             },
@@ -411,7 +413,7 @@ describe("scenarios > question > custom columns", () => {
           expressions: {
             [CE_NAME]: [
               "ceil",
-              ["joined-field", "Products", ["field-id", PRODUCTS.PRICE]],
+              ["field", PRODUCTS.PRICE, { "join-alias": "Products" }],
             ],
           },
         },
@@ -433,7 +435,7 @@ describe("scenarios > question > custom columns", () => {
       .click({ force: true }); // x is hidden and hover doesn't work so we have to force it
     cy.findByText("Join data").should("not.exist");
 
-    cy.log("**Reported failing on 0.38.1-SNAPSHOT (6d77f099)**");
+    cy.log("Reported failing on 0.38.1-SNAPSHOT (6d77f099)");
     cy.get("[class*=NotebookCellItem]")
       .contains(CE_NAME)
       .should("not.exist");
@@ -461,15 +463,15 @@ describe("scenarios > question > custom columns", () => {
               "case",
               [
                 [
-                  [">", ["field-id", ORDERS.DISCOUNT], 0],
-                  ["field-id", ORDERS.CREATED_AT],
+                  [">", ["field", ORDERS.DISCOUNT, null], 0],
+                  ["field", ORDERS.CREATED_AT, null],
                 ],
               ],
               {
                 default: [
-                  "fk->",
-                  ["field-id", ORDERS.PRODUCT_ID],
-                  ["field-id", PRODUCTS.CREATED_AT],
+                  "field",
+                  PRODUCTS.CREATED_AT,
+                  { "source-field": ORDERS.PRODUCT_ID },
                 ],
               },
             ],

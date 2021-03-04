@@ -132,6 +132,7 @@
   rows+column-names]
 
  [qp.test-util
+  store-contents
   with-database-timezone-id
   with-everything-store
   with-report-timezone-id
@@ -207,7 +208,8 @@
   get-dataset-definition
   has-questionable-timezone-support?
   has-test-extensions?
-  metabase-instance]
+  metabase-instance
+  sorts-nil-first?]
 
  [tx.env
   set-test-drivers!

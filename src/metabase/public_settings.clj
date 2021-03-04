@@ -389,3 +389,15 @@
   :visibility :public
   :type       :keyword
   :default    "sunday")
+
+(defsetting ssh-heartbeat-interval-sec
+  (deferred-tru "Controls how often the heartbeats are sent when an SSH tunnel is established (in seconds).")
+  :visibility :public
+  :type       :integer
+  :default    180)
+
+(defsetting redshift-fetch-size
+  (deferred-tru "Controls the fetch size used for Redshift queries (in PreparedStatement), via defaultRowFetchSize.")
+  :visibility :public
+  :type       :integer
+  :default    5000)

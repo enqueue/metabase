@@ -20,9 +20,7 @@ describe.skip("mysql > user > question > custom column", () => {
     const CC_NAME = "Abbr";
 
     withDatabase(2, ({ PEOPLE, PEOPLE_ID }) => {
-      cy.log(
-        "**--1. Create a question with `Source` column and abbreviated CC--**",
-      );
+      cy.log("Create a question with `Source` column and abbreviated CC");
       cy.request("POST", "/api/card", {
         name: "12445",
         dataset_query: {
@@ -33,7 +31,7 @@ describe.skip("mysql > user > question > custom column", () => {
             expressions: {
               [CC_NAME]: [
                 "substring",
-                ["field-id", PEOPLE.SOURCE],
+                ["field", PEOPLE.SOURCE, null],
                 0,
                 4, // we want 4 letter abbreviation
               ],

@@ -35,7 +35,7 @@ describe("scenarios > admin > datamodel > metadata", () => {
       "You might want to update the field name to make sure it still makes sense based on your remapping choices.",
     );
 
-    cy.log("**Name of the product should be displayed instead of its ID**");
+    cy.log("Name of the product should be displayed instead of its ID");
     openOrdersTable();
     cy.findAllByText("Awesome Concrete Shoes");
   });
@@ -74,7 +74,7 @@ describe("scenarios > admin > datamodel > metadata", () => {
     });
     cy.findByText("Save").click();
 
-    cy.log("**Numeric ratings should be remapped to custom strings**");
+    cy.log("Numeric ratings should be remapped to custom strings");
     openReviewsTable();
     Object.values(customMap).forEach(rating => {
       cy.findAllByText(rating);
@@ -94,7 +94,7 @@ describe("scenarios > admin > datamodel > metadata", () => {
           "source-table": ORDERS_ID,
           aggregation: [["count"]],
           breakout: [
-            ["datetime-field", ["field-id", ORDERS.CREATED_AT], "hour-of-day"],
+            ["field", ORDERS.CREATED_AT.id, { "temporal-unit": "hour-of-day" }],
           ],
         },
         type: "query",
@@ -106,7 +106,7 @@ describe("scenarios > admin > datamodel > metadata", () => {
 
       cy.findByText("Created At: Hour of day");
 
-      cy.log("**Reported failing in v0.37.2**");
+      cy.log("Reported failing in v0.37.2");
       cy.findByText(/^3:00 AM$/);
     });
   });

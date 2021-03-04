@@ -43,16 +43,16 @@ describe("scenarios > x-rays", () => {
               "source-table": PRODUCTS_ID,
               condition: [
                 "=",
-                ["field-id", ORDERS.PRODUCT_ID],
-                ["joined-field", PRODUCTS_ALIAS, ["field-id", PRODUCTS.ID]],
+                ["field", ORDERS.PRODUCT_ID, null],
+                ["field", PRODUCTS.ID, { "join-alias": PRODUCTS_ALIAS }],
               ],
               alias: PRODUCTS_ALIAS,
             },
           ],
           aggregation: [["count"]],
           breakout: [
-            ["datetime-field", ["field-id", ORDERS.CREATED_AT], "month"],
-            ["joined-field", PRODUCTS_ALIAS, ["field-id", PRODUCTS.CATEGORY]],
+            ["field", ORDERS.CREATED_AT, { "temporal-unit": "month" }],
+            ["field", PRODUCTS.CATEGORY, { "join-alias": PRODUCTS_ALIAS }],
           ],
         },
         database: 1,
@@ -77,7 +77,7 @@ describe("scenarios > x-rays", () => {
       cy.findByText(
         "A closer look at number of Orders where Created At is in March 2018 and Category is Gadget",
       );
-      cy.get(".Icon-warning").should("not.exist");
+      cy.icon("warning").should("not.exist");
     });
   });
 });

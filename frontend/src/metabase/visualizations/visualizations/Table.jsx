@@ -156,8 +156,7 @@ export default class Table extends Component {
     },
     // NOTE: table column settings may be identified by fieldRef (possible not normalized) or column name:
     //   { name: "COLUMN_NAME", enabled: true }
-    //   { fieldRef: ["fk->", 1, 2], enabled: true }
-    //   { fieldRef: ["fk->", ["field-id", 1], ["field-id", 2]], enabled: true }
+    //   { fieldRef: ["field", 2, {"source-field": 1}], enabled: true }
     "table.columns": {
       section: t`Columns`,
       title: t`Visible columns`,
@@ -297,11 +296,11 @@ export default class Table extends Component {
     };
   }
 
-  componentWillMount() {
+  UNSAFE_componentWillMount() {
     this._updateData(this.props);
   }
 
-  componentWillReceiveProps(newProps: Props) {
+  UNSAFE_componentWillReceiveProps(newProps: Props) {
     if (
       newProps.series !== this.props.series ||
       !_.isEqual(newProps.settings, this.props.settings)
